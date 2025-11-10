@@ -325,11 +325,11 @@ def get_tariffs_menu():
     """Меню выбора тарифов"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=f"1️⃣ 1 месяц - {TARIFFS['1month']['price']}₽",
+            text=f"1 месяц - {TARIFFS['1month']['price']}₽",
             callback_data="1month"
         )],
         [InlineKeyboardButton(
-            text=f"♾️ НАВСЕГДА - {TARIFFS['forever']['price']}₽ 💎",
+            text=f"НАВСЕГДА - {TARIFFS['forever']['price']}₽",
             callback_data="forever"
         )],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
