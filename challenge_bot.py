@@ -28,7 +28,7 @@ ADMIN_ID = int(os.getenv('ADMIN_ID', 6266485372))
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 # Ссылка на публичный канал челленджа
-CHALLENGE_CHANNEL_LINK = "https://t.me/+YOUR_LINK_HERE"  # ЗАМЕНИТЕ НА ВАШУ ССЫЛКУ!
+CHALLENGE_CHANNEL_LINK = "https://t.me/supervnimanie"
 
 # Тарифы (с Decoy Pricing для увеличения конверсии в "Навсегда")
 TARIFFS = {
