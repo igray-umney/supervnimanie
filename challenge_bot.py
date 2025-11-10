@@ -28,12 +28,13 @@ ADMIN_ID = int(os.getenv('ADMIN_ID', 6266485372))
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 # Ссылка на публичный канал челленджа
-CHALLENGE_CHANNEL_LINK = "https://t.me/supervnimanie"
+CHALLENGE_CHANNEL_LINK = "https://t.me/+YOUR_LINK_HERE"  # ЗАМЕНИТЕ НА ВАШУ ССЫЛКУ!
 
-# Тарифы
+# Тарифы (с Decoy Pricing для увеличения конверсии в "Навсегда")
 TARIFFS = {
-    '1month': {'name': '1 месяц', 'days': 30, 'price': 190, 'old_price': 490},
-    'forever': {'name': 'Навсегда', 'days': 36500, 'price': 990, 'old_price': 2990}
+    '1month': {'name': '1 месяц', 'days': 30, 'price': 290, 'old_price': 590},
+    '3months': {'name': '3 месяца', 'days': 90, 'price': 790, 'old_price': 1490},  # DECOY - делает "Навсегда" выгоднее!
+    'forever': {'name': 'Навсегда', 'days': 36500, 'price': 690, 'old_price': 2990}
 }
 
 # Время отправки сообщений (МСК = UTC+3)
@@ -322,14 +323,18 @@ def get_day_completed_keyboard(day):
     return keyboard
 
 def get_tariffs_menu():
-    """Меню выбора тарифов"""
+    """Меню выбора тарифов с Decoy Pricing"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=f"1 месяц - {TARIFFS['1month']['price']}₽",
+            text=f"1️⃣ 1 месяц - {TARIFFS['1month']['price']}₽",
             callback_data="1month"
         )],
         [InlineKeyboardButton(
-            text=f"НАВСЕГДА - {TARIFFS['forever']['price']}₽",
+            text=f"3️⃣ 3 месяца - {TARIFFS['3months']['price']}₽",
+            callback_data="3months"
+        )],
+        [InlineKeyboardButton(
+            text=f"♾️ НАВСЕГДА - {TARIFFS['forever']['price']}₽ 🔥 ВЫГОДНЕЕ!",
             callback_data="forever"
         )],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
@@ -391,7 +396,7 @@ async def start_challenge(callback: types.CallbackQuery):
         "📚 <b>Шаг 1:</b> Присоединитесь к каналу челленджа\n\n"
         f"👉 {CHALLENGE_CHANNEL_LINK}\n\n"
         "Там вас ждут все материалы на 3 дня:\n"
-        "• День 1: Мини-игра + задание\n"
+        "• День 1: Видео + задание\n"
         "• День 2: Материалы + практика\n"
         "• День 3: Финальное задание\n\n"
         "После подписки возвращайтесь сюда - я буду напоминать о занятиях и помогать! 💪",
@@ -555,7 +560,7 @@ async def my_progress(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "show_tariffs")
 async def show_tariffs(callback: types.CallbackQuery):
-    """Показать тарифы"""
+    """Показать тарифы с акцентом на выгоду"""
     await callback.message.edit_text(
         "💎 <b>Полный курс «Супервнимание»</b>\n\n"
         "🎯 Что вы получите:\n\n"
@@ -564,14 +569,15 @@ async def show_tariffs(callback: types.CallbackQuery):
         "🎨 Новые игры каждую неделю\n"
         "💬 Поддержка и советы\n"
         "📅 Готовые планы на каждый день\n\n"
-        "💰 <b>Выберите тариф:</b>",
+        "💰 <b>Выберите тариф:</b>\n\n"
+        "🔥 <b>Обратите внимание:</b> тариф «Навсегда» выгоднее чем на 3 месяца!",
         reply_markup=get_tariffs_menu(),
         parse_mode="HTML"
     )
     
     await callback.answer()
 
-@dp.callback_query(F.data.in_(['1month', 'forever']))
+@dp.callback_query(F.data.in_(['1month', '3months', 'forever']))
 async def process_tariff(callback: types.CallbackQuery):
     """Обработка выбора тарифа"""
     user_id = callback.from_user.id
