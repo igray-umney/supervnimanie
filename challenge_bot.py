@@ -38,6 +38,13 @@ TARIFFS = {
     'forever': {'name': 'Навсегда', 'days': 36500, 'price': 690, 'old_price': 2990}
 }
 
+# Цены в Telegram Stars (1 star ≈ 1.5₽, но делаем чуть выгоднее)
+TARIFFS_STARS = {
+    '1month': {'name': '1 month', 'days': 30, 'price': 200, 'old_price': 400},
+    '3months': {'name': '3 months', 'days': 90, 'price': 550, 'old_price': 1000},
+    'forever': {'name': 'Forever', 'days': 36500, 'price': 480, 'old_price': 2000}
+}
+
 # Время отправки сообщений (МСК = UTC+3)
 MORNING_HOUR = 6  # 9:00 МСК = 6:00 UTC
 EVENING_HOUR = 17  # 20:00 МСК = 17:00 UTC
@@ -255,6 +262,12 @@ def mark_user_blocked(user_id, blocked=True):
     cur.close()
     conn.close()
 
+def is_russian_user(user):
+    """Определяем российского пользователя по language_code"""
+    if hasattr(user, 'language_code'):
+        return user.language_code == 'ru'
+    return True  # По умолчанию считаем российским    
+
 # ========================================
 # ЮKASSA API
 # ========================================
@@ -342,23 +355,42 @@ def get_day_completed_keyboard(day):
     ])
     return keyboard
 
-def get_tariffs_menu():
+def get_tariffs_menu(use_stars=False):
     """Меню выбора тарифов с Decoy Pricing"""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"1️⃣ 1 месяц - {TARIFFS['1month']['price']}₽",
-            callback_data="1month"
-        )],
-        [InlineKeyboardButton(
-            text=f"3️⃣ 3 месяца - {TARIFFS['3months']['price']}₽",
-            callback_data="3months"
-        )],
-        [InlineKeyboardButton(
-            text=f"♾️ НАВСЕГДА - {TARIFFS['forever']['price']}₽ 🔥 ВЫГОДНЕЕ!",
-            callback_data="forever"
-        )],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
-    ])
+    if use_stars:
+        # Меню для Stars (международные пользователи)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"1️⃣ 1 month - {TARIFFS_STARS['1month']['price']} ⭐",
+                callback_data="stars_1month"
+            )],
+            [InlineKeyboardButton(
+                text=f"3️⃣ 3 months - {TARIFFS_STARS['3months']['price']} ⭐",
+                callback_data="stars_3months"
+            )],
+            [InlineKeyboardButton(
+                text=f"♾️ FOREVER - {TARIFFS_STARS['forever']['price']} ⭐ 🔥 BEST!",
+                callback_data="stars_forever"
+            )],
+            [InlineKeyboardButton(text="◀️ Back", callback_data="back")]
+        ])
+    else:
+        # Меню для ЮКассы (российские пользователи)
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"1️⃣ 1 месяц - {TARIFFS['1month']['price']}₽",
+                callback_data="1month"
+            )],
+            [InlineKeyboardButton(
+                text=f"3️⃣ 3 месяца - {TARIFFS['3months']['price']}₽",
+                callback_data="3months"
+            )],
+            [InlineKeyboardButton(
+                text=f"♾️ НАВСЕГДА - {TARIFFS['forever']['price']}₽ 🔥 ВЫГОДНЕЕ!",
+                callback_data="forever"
+            )],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
+        ])
     return keyboard
 
 # ========================================
@@ -581,17 +613,36 @@ async def my_progress(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "show_tariffs")
 async def show_tariffs(callback: types.CallbackQuery):
     """Показать тарифы с акцентом на выгоду"""
+    user_is_russian = is_russian_user(callback.from_user)
+    
+    if user_is_russian:
+        text = (
+            "💎 <b>Полный курс «Супервнимание»</b>\n\n"
+            "🎯 Что вы получите:\n\n"
+            "📚 Полный 14-дневный курс\n"
+            "🎮 1000+ материалов (вместо 11)\n"
+            "🎨 Новые игры каждую неделю\n"
+            "💬 Поддержка и советы\n"
+            "📅 Готовые планы на каждый день\n\n"
+            "💰 <b>Выберите тариф:</b>\n\n"
+            "🔥 <b>Обратите внимание:</b> тариф «Навсегда» выгоднее чем на 3 месяца!"
+        )
+    else:
+        text = (
+            "💎 <b>Full Course "Super Attention"</b>\n\n"
+            "🎯 What you'll get:\n\n"
+            "📚 Complete 14-day course\n"
+            "🎮 1000+ materials (instead of 11)\n"
+            "🎨 New games every week\n"
+            "💬 Support and advice\n"
+            "📅 Ready-made daily plans\n\n"
+            "💰 <b>Choose your plan:</b>\n\n"
+            "🔥 <b>Note:</b> 'Forever' plan is more profitable than 3 months!"
+        )
+    
     await callback.message.edit_text(
-        "💎 <b>Полный курс «Супервнимание»</b>\n\n"
-        "🎯 Что вы получите:\n\n"
-        "📚 Полный 14-дневный курс\n"
-        "🎮 1000+ материалов (вместо 11)\n"
-        "🎨 Новые игры каждую неделю\n"
-        "💬 Поддержка и советы\n"
-        "📅 Готовые планы на каждый день\n\n"
-        "💰 <b>Выберите тариф:</b>\n\n"
-        "🔥 <b>Обратите внимание:</b> тариф «Навсегда» выгоднее чем на 3 месяца!",
-        reply_markup=get_tariffs_menu(),
+        text,
+        reply_markup=get_tariffs_menu(use_stars=not user_is_russian),
         parse_mode="HTML"
     )
     
@@ -639,6 +690,56 @@ async def process_tariff(callback: types.CallbackQuery):
         reply_markup=keyboard,
         parse_mode="HTML"
     )
+
+@dp.callback_query(F.data.startswith("stars_"))
+async def process_stars_tariff(callback: types.CallbackQuery):
+    """Обработка выбора тарифа через Stars"""
+    user_id = callback.from_user.id
+    tariff_code = callback.data.replace("stars_", "")
+    tariff = TARIFFS_STARS[tariff_code]
+    
+    await callback.answer("⏳ Creating invoice...", show_alert=False)
+    
+    # Создаём инвойс для Stars
+    prices = [types.LabeledPrice(label=tariff['name'], amount=tariff['price'])]
+    
+    try:
+        await bot.send_invoice(
+            chat_id=user_id,
+            title=f"Full Course: {tariff['name']}",
+            description=f"Access to the full course for {tariff['days']} days",
+            payload=f"{user_id}_{tariff_code}",
+            provider_token="",  # Пустая строка для Stars
+            currency="XTR",  # Telegram Stars
+            prices=prices,
+            photo_url="https://i.imgur.com/placeholder.jpg",  # Замените на свою картинку
+            photo_size=512,
+            photo_width=512,
+            photo_height=512,
+            need_name=False,
+            need_phone_number=False,
+            need_email=False,
+            need_shipping_address=False,
+            is_flexible=False
+        )
+        
+        await callback.message.edit_text(
+            f"✨ <b>Payment via Telegram Stars</b>\n\n"
+            f"📦 Plan: {tariff['name']}\n"
+            f"⭐ Price: {tariff['price']} stars\n\n"
+            f"The invoice has been sent to you! Pay it to get access.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Back", callback_data="back")]
+            ]),
+            parse_mode="HTML"
+        )
+    
+    except Exception as e:
+        logging.error(f"Error creating Stars invoice: {e}")
+        await callback.message.edit_text(
+            "❌ Error creating invoice. Please try again later.",
+            reply_markup=get_main_menu()
+        )
 
 @dp.callback_query(F.data.startswith("check_"))
 async def check_payment(callback: types.CallbackQuery):
@@ -740,6 +841,71 @@ async def show_faq(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
     await callback.answer()
+
+@dp.pre_checkout_query()
+async def pre_checkout_handler(pre_checkout_query: types.PreCheckoutQuery):
+    """Обработка pre-checkout для Stars"""
+    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+@dp.message(F.successful_payment)
+async def successful_payment_handler(message: types.Message):
+    """Обработка успешной оплаты Stars"""
+    user_id = message.from_user.id
+    payload = message.successful_payment.invoice_payload
+    
+    # Парсим payload: "user_id_tariff_code"
+    try:
+        _, tariff_code = payload.rsplit('_', 1)
+        tariff = TARIFFS_STARS[tariff_code]
+        
+        # Выдаём подписку
+        grant_subscription(user_id, tariff_code)
+        
+        # Создаём инвайт в клуб
+        try:
+            if tariff_code == 'forever':
+                invite_link = await bot.create_chat_invite_link(CLUB_CHANNEL_ID, member_limit=1)
+            else:
+                invite_link = await bot.create_chat_invite_link(
+                    CLUB_CHANNEL_ID,
+                    member_limit=1,
+                    expire_date=datetime.now() + timedelta(days=tariff['days'])
+                )
+            
+            await message.answer(
+                f"✅ <b>Payment successful!</b>\n\n"
+                f"🎉 Congratulations! You got full access!\n"
+                f"📅 Plan: {tariff['name']}\n\n"
+                f"Join the club:\n{invite_link.invite_link}",
+                reply_markup=get_main_menu(),
+                parse_mode="HTML"
+            )
+            
+            # Уведомление админу
+            if ADMIN_ID:
+                await bot.send_message(
+                    ADMIN_ID,
+                    f"⭐ New Stars payment!\n"
+                    f"👤 @{message.from_user.username or 'unknown'} (ID: {user_id})\n"
+                    f"📦 Plan: {tariff['name']}\n"
+                    f"⭐ Amount: {tariff['price']} stars"
+                )
+        
+        except Exception as e:
+            logging.error(f"Error creating invite after Stars payment: {e}")
+            await message.answer(
+                "✅ Payment received!\n"
+                "❌ Error creating invitation.\n"
+                "Contact administrator.",
+                reply_markup=get_main_menu()
+            )
+    
+    except Exception as e:
+        logging.error(f"Error processing Stars payment: {e}")
+        await message.answer(
+            "❌ Error processing payment. Contact administrator.",
+            reply_markup=get_main_menu()
+        )
 
 # ========================================
 # ФОНОВЫЕ ЗАДАЧИ (НАПОМИНАНИЯ)
