@@ -233,7 +233,12 @@ def grant_subscription(user_id, tariff_code):
     conn = get_db_connection()
     cur = conn.cursor()
     
-    tariff = TARIFFS[tariff_code]
+    # Проверяем в каком словаре искать тариф
+    if tariff_code in TARIFFS:
+        tariff = TARIFFS[tariff_code]
+    else:
+        tariff = TARIFFS_STARS[tariff_code]
+    
     subscription_until = datetime.now() + timedelta(days=tariff['days'])
     
     cur.execute('''UPDATE users 
@@ -853,15 +858,12 @@ async def successful_payment_handler(message: types.Message):
     user_id = message.from_user.id
     payload = message.successful_payment.invoice_payload
     
-    # Парсим payload: "user_id_tariff_code"
     try:
         _, tariff_code = payload.rsplit('_', 1)
         tariff = TARIFFS_STARS[tariff_code]
         
-        # Выдаём подписку
         grant_subscription(user_id, tariff_code)
         
-        # Создаём инвайт в клуб
         try:
             if tariff_code == 'forever':
                 invite_link = await bot.create_chat_invite_link(CLUB_CHANNEL_ID, member_limit=1)
@@ -881,7 +883,6 @@ async def successful_payment_handler(message: types.Message):
                 parse_mode="HTML"
             )
             
-            # Уведомление админу
             if ADMIN_ID:
                 await bot.send_message(
                     ADMIN_ID,
