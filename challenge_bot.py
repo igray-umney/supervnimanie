@@ -634,7 +634,7 @@ async def show_tariffs(callback: types.CallbackQuery):
         )
     else:
         text = (
-            "💎 <b>Full Course "Super Attention"</b>\n\n"
+            "💎 <b>Full Course 'Super Attention'</b>\n\n"
             "🎯 What you'll get:\n\n"
             "📚 Complete 14-day course\n"
             "🎮 1000+ materials (instead of 11)\n"
