@@ -754,108 +754,113 @@ async def send_reminders():
             current_hour = datetime.utcnow().hour
             
             # Утренние напоминания (9:00 МСК = 6:00 UTC)
+async def send_reminders():
+    """Фоновая задача отправки напоминаний"""
+    logging.info("Reminders task started!")
+    
+    while True:
+        try:
+            current_hour = datetime.utcnow().hour
+            
             # Утренние напоминания (9:00 МСК = 6:00 UTC)
-if current_hour == MORNING_HOUR:
-    for day in [1, 2, 3]:
-        users = get_users_for_reminders(day, 'morning')
-        
-        for user in users:
-            user_id = user['user_id']
-            
-            try:
-                if day == 1:
-                    text = (
-                        "☀️ <b>Доброе утро!</b>\n\n"
-                        "🎯 Сегодня <b>День 1</b> челленджа!\n\n"
-                        "Переходите в канал и начинайте:\n"
-                        "• Посмотрите видео\n"
-                        "• Сделайте задание 1\n\n"
-                        "Это займёт всего 15-20 минут!\n\n"
-                        "💪 Вы справитесь!"
-                    )
-                elif day == 2:
-                    text = (
-                        "☀️ <b>Доброе утро!</b>\n\n"
-                        "🎯 Сегодня <b>День 2</b>!\n\n"
-                        "Отличный старт вчера! 💪\n\n"
-                        "Сегодня:\n"
-                        "• Изучите материалы\n"
-                        "• Выполните практику\n\n"
-                        "Продолжаем в том же духе!"
-                    )
-                else:  # day 3
-                    text = (
-                        "☀️ <b>Доброе утро!</b>\n\n"
-                        "🎯 <b>ФИНАЛЬНЫЙ ДЕНЬ!</b>\n\n"
-                        "Вы уже так много сделали! 🏆\n\n"
-                        "Сегодня:\n"
-                        "• Финальное задание\n"
-                        "• Подведение итогов\n\n"
-                        "Последний рывок - и вы победитель! 💪"
-                    )
-                
-                await bot.send_message(user_id, text, parse_mode="HTML")
-                mark_reminder_sent(user_id, day, 'morning')
-                logging.info(f"Sent morning reminder day {day} to {user_id}")
-                
-                await asyncio.sleep(0.1)
-            
-            except TelegramForbiddenError:
-                # Пользователь заблокировал бота
-                mark_user_blocked(user_id, blocked=True)
-                logging.info(f"User {user_id} blocked the bot")
-            
-            except TelegramBadRequest as e:
-                logging.error(f"Bad request to {user_id}: {e}")
-            
-            except Exception as e:
-                logging.error(f"Error sending morning reminder to {user_id}: {e}")
+            if current_hour == MORNING_HOUR:
+                for day in [1, 2, 3]:
+                    users = get_users_for_reminders(day, 'morning')
+                    
+                    for user in users:
+                        user_id = user['user_id']
+                        
+                        try:
+                            if day == 1:
+                                text = (
+                                    "☀️ <b>Доброе утро!</b>\n\n"
+                                    "🎯 Сегодня <b>День 1</b> челленджа!\n\n"
+                                    "Переходите в канал и начинайте:\n"
+                                    "• Посмотрите видео\n"
+                                    "• Сделайте задание 1\n\n"
+                                    "Это займёт всего 15-20 минут!\n\n"
+                                    "💪 Вы справитесь!"
+                                )
+                            elif day == 2:
+                                text = (
+                                    "☀️ <b>Доброе утро!</b>\n\n"
+                                    "🎯 Сегодня <b>День 2</b>!\n\n"
+                                    "Отличный старт вчера! 💪\n\n"
+                                    "Сегодня:\n"
+                                    "• Изучите материалы\n"
+                                    "• Выполните практику\n\n"
+                                    "Продолжаем в том же духе!"
+                                )
+                            else:  # day 3
+                                text = (
+                                    "☀️ <b>Доброе утро!</b>\n\n"
+                                    "🎯 <b>ФИНАЛЬНЫЙ ДЕНЬ!</b>\n\n"
+                                    "Вы уже так много сделали! 🏆\n\n"
+                                    "Сегодня:\n"
+                                    "• Финальное задание\n"
+                                    "• Подведение итогов\n\n"
+                                    "Последний рывок - и вы победитель! 💪"
+                                )
+                            
+                            await bot.send_message(user_id, text, parse_mode="HTML")
+                            mark_reminder_sent(user_id, day, 'morning')
+                            logging.info(f"Sent morning reminder day {day} to {user_id}")
+                            
+                            await asyncio.sleep(0.1)
+                        
+                        except TelegramForbiddenError:
+                            mark_user_blocked(user_id, blocked=True)
+                            logging.info(f"User {user_id} blocked the bot")
+                        
+                        except TelegramBadRequest as e:
+                            logging.error(f"Bad request to {user_id}: {e}")
+                        
+                        except Exception as e:
+                            logging.error(f"Error sending morning reminder to {user_id}: {e}")
             
             # Вечерние напоминания (20:00 МСК = 17:00 UTC)
-            # Вечерние напоминания (20:00 МСК = 17:00 UTC)
-if current_hour == EVENING_HOUR:
-    for day in [1, 2, 3]:
-        users = get_users_for_reminders(day, 'evening')
-        
-        for user in users:
-            user_id = user['user_id']
-            
-            try:
-                # Проверяем прошёл ли день
-                if day == 1 and user['day1_completed']:
-                    continue
-                if day == 2 and user['day2_completed']:
-                    continue
-                if day == 3 and user['day3_completed']:
-                    continue
-                
-                text = (
-                    "🌙 <b>Добрый вечер!</b>\n\n"
-                    f"Как прошёл День {day}?\n\n"
-                    f"Если вы завершили все задания - отметьте это! 👇"
-                )
-                
-                await bot.send_message(
-                    user_id,
-                    text,
-                    reply_markup=get_day_completed_keyboard(day),
-                    parse_mode="HTML"
-                )
-                mark_reminder_sent(user_id, day, 'evening')
-                logging.info(f"Sent evening reminder day {day} to {user_id}")
-                
-                await asyncio.sleep(0.1)
-            
-            except TelegramForbiddenError:
-                # Пользователь заблокировал бота
-                mark_user_blocked(user_id, blocked=True)
-                logging.info(f"User {user_id} blocked the bot")
-            
-            except TelegramBadRequest as e:
-                logging.error(f"Bad request to {user_id}: {e}")
-            
-            except Exception as e:
-                logging.error(f"Error sending evening reminder to {user_id}: {e}")
+            if current_hour == EVENING_HOUR:
+                for day in [1, 2, 3]:
+                    users = get_users_for_reminders(day, 'evening')
+                    
+                    for user in users:
+                        user_id = user['user_id']
+                        
+                        try:
+                            # Проверяем прошёл ли день
+                            if day == 1 and user['day1_completed']:
+                                continue
+                            if day == 2 and user['day2_completed']:
+                                continue
+                            if day == 3 and user['day3_completed']:
+                                continue
+                            
+                            text = (
+                                "🌙 <b>Добрый вечер!</b>\n\n"
+                                f"Как прошёл День {day}?\n\n"
+                                f"Если вы завершили все задания - отметьте это! 👇"
+                            )
+                            
+                            await bot.send_message(
+                                user_id,
+                                text,
+                                reply_markup=get_day_completed_keyboard(day),
+                                parse_mode="HTML"
+                            )
+                            mark_reminder_sent(user_id, day, 'evening')
+                            logging.info(f"Sent evening reminder day {day} to {user_id}")
+                            
+                            await asyncio.sleep(0.1)
+                        
+                        except TelegramForbiddenError:
+                            mark_user_blocked(user_id, blocked=True)
+                            logging.info(f"User {user_id} blocked the bot")
+                        
+                        except TelegramBadRequest as e:
+                            logging.error(f"Bad request to {user_id}: {e}")
+                        
+                        except Exception as e:
+                            logging.error(f"Error sending evening reminder to {user_id}: {e}")
             
             # Проверяем каждые 30 минут
             await asyncio.sleep(1800)
