@@ -617,37 +617,47 @@ async def my_progress(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "show_tariffs")
 async def show_tariffs(callback: types.CallbackQuery):
-    """Показать тарифы с акцентом на выгоду"""
-    user_is_russian = is_russian_user(callback.from_user)
-    
-    if user_is_russian:
-        text = (
-            "💎 <b>Полный курс «Супервнимание»</b>\n\n"
-            "🎯 Что вы получите:\n\n"
-            "📚 Полный 14-дневный курс\n"
-            "🎮 1000+ материалов (вместо 11)\n"
-            "🎨 Новые игры каждую неделю\n"
-            "💬 Поддержка и советы\n"
-            "📅 Готовые планы на каждый день\n\n"
-            "💰 <b>Выберите тариф:</b>\n\n"
-            "🔥 <b>Обратите внимание:</b> тариф «Навсегда» выгоднее чем на 3 месяца!"
-        )
-    else:
-        text = (
-            "💎 <b>Full Course 'Super Attention'</b>\n\n"
-            "🎯 What you'll get:\n\n"
-            "📚 Complete 14-day course\n"
-            "🎮 1000+ materials (instead of 11)\n"
-            "🎨 New games every week\n"
-            "💬 Support and advice\n"
-            "📅 Ready-made daily plans\n\n"
-            "💰 <b>Choose your plan:</b>\n\n"
-            "🔥 <b>Note:</b> 'Forever' plan is more profitable than 3 months!"
-        )
-    
+    """Показать выбор способа оплаты"""
     await callback.message.edit_text(
-        text,
-        reply_markup=get_tariffs_menu(use_stars=not user_is_russian),
+        "💎 <b>Полный курс «Супервнимание»</b>\n\n"
+        "🎯 Что вы получите:\n\n"
+        "📚 Полный 14-дневный курс\n"
+        "🎮 1000+ материалов (вместо 11)\n"
+        "🎨 Новые игры каждую неделю\n"
+        "💬 Поддержка и советы\n"
+        "📅 Готовые планы на каждый день\n\n"
+        "💳 <b>Выберите способ оплаты:</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 Карта РФ (рубли)", callback_data="payment_rub")],
+            [InlineKeyboardButton(text="⭐ Карта не РФ (Telegram Stars)", callback_data="payment_stars")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
+        ]),
+        parse_mode="HTML"
+    )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == "payment_rub")
+async def show_tariffs_rub(callback: types.CallbackQuery):
+    """Показать тарифы для оплаты рублями через ЮКассу"""
+    await callback.message.edit_text(
+        "💎 <b>Полный курс «Супервнимание»</b>\n\n"
+        "💰 <b>Оплата картой РФ (рубли):</b>\n\n"
+        "🔥 <b>Обратите внимание:</b> тариф «Навсегда» выгоднее чем на 3 месяца!",
+        reply_markup=get_tariffs_menu(use_stars=False),
+        parse_mode="HTML"
+    )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == "payment_stars")
+async def show_tariffs_stars(callback: types.CallbackQuery):
+    """Показать тарифы для оплаты Stars"""
+    await callback.message.edit_text(
+        "💎 <b>Full Course 'Super Attention'</b>\n\n"
+        "⭐ <b>Payment with Telegram Stars:</b>\n\n"
+        "🔥 <b>Note:</b> 'Forever' plan is more profitable than 3 months!",
+        reply_markup=get_tariffs_menu(use_stars=True),
         parse_mode="HTML"
     )
     
