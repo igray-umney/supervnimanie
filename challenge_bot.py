@@ -754,15 +754,6 @@ async def send_reminders():
             current_hour = datetime.utcnow().hour
             
             # Утренние напоминания (9:00 МСК = 6:00 UTC)
-async def send_reminders():
-    """Фоновая задача отправки напоминаний"""
-    logging.info("Reminders task started!")
-    
-    while True:
-        try:
-            current_hour = datetime.utcnow().hour
-            
-            # Утренние напоминания (9:00 МСК = 6:00 UTC)
             if current_hour == MORNING_HOUR:
                 for day in [1, 2, 3]:
                     users = get_users_for_reminders(day, 'morning')
