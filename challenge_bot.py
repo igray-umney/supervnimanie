@@ -153,15 +153,17 @@ def get_users_for_reminders(day, reminder_type):
     cur = conn.cursor()
     
     # Вычисляем временной диапазон для дня
-    if day == 1:
-        time_start = datetime.now() - timedelta(hours=24)
-        time_end = datetime.now()
-    else:
-        time_start = datetime.now() - timedelta(days=day)
-        time_end = datetime.now() - timedelta(days=day-1)
+    # День 1: от 0 до 24 часов назад
+    # День 2: от 24 до 48 часов назад
+    # День 3: от 48 до 72 часов назад
+    
+    hours_max = day * 24  # Максимум часов назад
+    hours_min = (day - 1) * 24  # Минимум часов назад
+    
+    time_start = datetime.now() - timedelta(hours=hours_max)
+    time_end = datetime.now() - timedelta(hours=hours_min)
     
     # Находим пользователей которым нужно отправить напоминание
-    # ДОБАВЛЕНО: исключаем заблокированных (bot_blocked = FALSE)
     cur.execute('''
         SELECT u.user_id, u.username, u.day1_completed, u.day2_completed, u.day3_completed
         FROM users u
