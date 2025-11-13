@@ -2,8 +2,10 @@ import os
 import logging
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import asyncio
 import aiohttp
@@ -24,21 +26,27 @@ BOT_TOKEN = os.getenv('BOT_TOKEN', '8545217909:AAHfZ7NGN2FZ4J1vq6Z-370SYglciu7I5
 CHALLENGE_CHANNEL_ID = os.getenv('CHALLENGE_CHANNEL_ID', '-1003265459459')
 CLUB_CHANNEL_ID = os.getenv('CLUB_CHANNEL_ID', '-1003185810463')
 YOOKASSA_SHOP_ID = os.getenv('YOOKASSA_SHOP_ID', '1119525')
-YOOKASSA_SECRET_KEY = os.getenv('YOOKASSA_SECRET_KEY', 'live_qkWu9Kao2ozys7nUT7R0pxORcc7YvVX8144U4FWG8LU')
+YOOKASSA_SECRET_KEY = os.getenv('YOOKASSA_SECRET_KEY', 'live_PrQj_dYYmn3m9LQh4KRytCZc1BUHsbb1pliPD7koiK8')
 ADMIN_ID = int(os.getenv('ADMIN_ID', 6266485372))
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 # Ссылка на публичный канал челленджа
 CHALLENGE_CHANNEL_LINK = "https://t.me/supervnimanie"
 
-# Тарифы (с Decoy Pricing для увеличения конверсии в "Навсегда")
+# ОБЫЧНЫЕ ТАРИФЫ (для обычных пользователей)
 TARIFFS = {
-    '1month': {'name': '1 месяц', 'days': 30, 'price': 290, 'old_price': 590},
-    '3months': {'name': '3 месяца', 'days': 90, 'price': 790, 'old_price': 1490},  # DECOY - делает "Навсегда" выгоднее!
-    'forever': {'name': 'Навсегда', 'days': 36500, 'price': 690, 'old_price': 2990}
+    '1month': {'name': '1 месяц', 'days': 30, 'price': 490, 'old_price': 990},
+    '3months': {'name': '3 месяца', 'days': 90, 'price': 1290, 'old_price': 2490},
+    'forever': {'name': 'Навсегда', 'days': 36500, 'price': 2990, 'old_price': 5990}
 }
 
-# Цены в Telegram Stars (1 star ≈ 1.5₽, но делаем чуть выгоднее)
+# СПЕЦИАЛЬНЫЕ ТАРИФЫ ДЛЯ УЧАСТНИКОВ ЧЕЛЛЕНДЖА
+CHALLENGE_TARIFFS = {
+    '1month': {'name': '1 месяц', 'days': 30, 'price': 290, 'old_price': 490},
+    'forever': {'name': 'Навсегда', 'days': 36500, 'price': 990, 'old_price': 2990}
+}
+
+# Цены в Telegram Stars
 TARIFFS_STARS = {
     '1month': {'name': '1 month', 'days': 30, 'price': 200, 'old_price': 400},
     '3months': {'name': '3 months', 'days': 90, 'price': 550, 'old_price': 1000},
@@ -53,6 +61,29 @@ EVENING_HOUR = 17  # 20:00 МСК = 17:00 UTC
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
+
+# ========================================
+# FSM СОСТОЯНИЯ ДЛЯ ЧЕЛЛЕНДЖА
+# ========================================
+
+class ChallengeStates(StatesGroup):
+    # Старт
+    CHOOSING_AGE = State()
+    
+    # День 1
+    DAY1_WAITING = State()
+    DAY1_ASK_TIME = State()
+    DAY1_ASK_DIFFICULTY = State()
+    DAY1_OFFER_CATEGORY_CHANGE = State()
+    
+    # День 2
+    DAY2_WAITING = State()
+    DAY2_ASK_TIME = State()
+    
+    # День 3
+    DAY3_WAITING = State()
+    DAY3_ASK_TIME = State()
+    DAY3_SHOW_RESULTS = State()
 
 # ========================================
 # БАЗА ДАННЫХ PostgreSQL
@@ -77,6 +108,7 @@ def init_db():
                   day3_completed BOOLEAN DEFAULT FALSE,
                   subscription_until TIMESTAMP,
                   tariff TEXT,
+                  bot_blocked BOOLEAN DEFAULT FALSE,
                   created_at TIMESTAMP DEFAULT NOW())''')
     
     # Таблица платежей
@@ -98,13 +130,58 @@ def init_db():
                   sent_at TIMESTAMP,
                   UNIQUE(user_id, day, reminder_type))''')
     
+    # Таблица прогресса челленджа
+    cur.execute('''CREATE TABLE IF NOT EXISTS challenge_progress (
+        user_id BIGINT PRIMARY KEY,
+        age INT,
+        age_category VARCHAR(10),
+        current_day INT DEFAULT 1,
+        is_active BOOLEAN DEFAULT TRUE,
+        started_at TIMESTAMP DEFAULT NOW(),
+        day1_completed BOOLEAN DEFAULT FALSE,
+        day1_time VARCHAR(20),
+        day1_difficulty VARCHAR(20),
+        day1_completed_at TIMESTAMP,
+        day2_completed BOOLEAN DEFAULT FALSE,
+        day2_time VARCHAR(20),
+        day2_completed_at TIMESTAMP,
+        day3_completed BOOLEAN DEFAULT FALSE,
+        day3_time VARCHAR(20),
+        day3_completed_at TIMESTAMP,
+        last_reminder_sent TIMESTAMP,
+        reminder_count INT DEFAULT 0,
+        day1_reminder_sent BOOLEAN DEFAULT FALSE,
+        day2_reminder_sent BOOLEAN DEFAULT FALSE,
+        day3_reminder_sent BOOLEAN DEFAULT FALSE,
+        category_changed BOOLEAN DEFAULT FALSE,
+        original_category VARCHAR(10),
+        completed_at TIMESTAMP,
+        purchased BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+    )''')
+    
+    # Таблица материалов челленджа
+    cur.execute('''CREATE TABLE IF NOT EXISTS challenge_materials (
+        id SERIAL PRIMARY KEY,
+        age_category VARCHAR(10) NOT NULL,
+        day INT NOT NULL,
+        variant INT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        file_id TEXT NOT NULL,
+        file_type VARCHAR(20),
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(age_category, day, variant)
+    )''')
+    
     conn.commit()
     cur.close()
     conn.close()
     logging.info("Database initialized!")
 
 # ========================================
-# ФУНКЦИИ РАБОТЫ С БД
+# ФУНКЦИИ РАБОТЫ С БД (ОСНОВНЫЕ)
 # ========================================
 
 def add_user(user_id, username):
@@ -131,70 +208,553 @@ def get_user(user_id):
     conn.close()
     return user
 
-def mark_day_completed(user_id, day):
-    """Отметить день как пройденный"""
+def mark_user_blocked(user_id, blocked=True):
+    """Пометить пользователя как заблокировавшего бота"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('UPDATE users SET bot_blocked = %s WHERE user_id = %s', (blocked, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+# ========================================
+# ФУНКЦИИ РАБОТЫ С ЧЕЛЛЕНДЖЕМ
+# ========================================
+
+def determine_age_category(age):
+    """Определить категорию по возрасту"""
+    if age in [3, 4, 5]:
+        return '3-5'
+    elif age in [4, 5, 6]:
+        return '4-6'
+    elif age in [5, 6, 7]:
+        return '5-7'
+    else:
+        return '3-5'  # По умолчанию
+
+def start_challenge(user_id, age):
+    """Начать челлендж для пользователя"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    category = determine_age_category(age)
+    
+    cur.execute('''INSERT INTO challenge_progress 
+                   (user_id, age, age_category, started_at)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (user_id) 
+                   DO UPDATE SET age = %s, age_category = %s, started_at = %s, is_active = TRUE''',
+                (user_id, age, category, datetime.now(), age, category, datetime.now()))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def get_challenge_progress(user_id):
+    """Получить прогресс челленджа пользователя"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM challenge_progress WHERE user_id = %s', (user_id,))
+    progress = cur.fetchone()
+    cur.close()
+    conn.close()
+    return progress
+
+def update_challenge_day(user_id, day, time_spent, difficulty=None):
+    """Обновить данные по дню челленджа"""
     conn = get_db_connection()
     cur = conn.cursor()
     
     if day == 1:
-        cur.execute('UPDATE users SET day1_completed = TRUE WHERE user_id = %s', (user_id,))
+        if difficulty:
+            cur.execute('''UPDATE challenge_progress 
+                           SET day1_completed = TRUE, day1_time = %s, 
+                               day1_difficulty = %s, day1_completed_at = %s, current_day = 2
+                           WHERE user_id = %s''',
+                        (time_spent, difficulty, datetime.now(), user_id))
+        else:
+            cur.execute('''UPDATE challenge_progress 
+                           SET day1_completed = TRUE, day1_time = %s, 
+                               day1_completed_at = %s, current_day = 2
+                           WHERE user_id = %s''',
+                        (time_spent, datetime.now(), user_id))
     elif day == 2:
-        cur.execute('UPDATE users SET day2_completed = TRUE WHERE user_id = %s', (user_id,))
+        cur.execute('''UPDATE challenge_progress 
+                       SET day2_completed = TRUE, day2_time = %s, 
+                           day2_completed_at = %s, current_day = 3
+                       WHERE user_id = %s''',
+                    (time_spent, datetime.now(), user_id))
     elif day == 3:
-        cur.execute('UPDATE users SET day3_completed = TRUE WHERE user_id = %s', (user_id,))
+        cur.execute('''UPDATE challenge_progress 
+                       SET day3_completed = TRUE, day3_time = %s, 
+                           day3_completed_at = %s, completed_at = %s, is_active = FALSE
+                       WHERE user_id = %s''',
+                    (time_spent, datetime.now(), datetime.now(), user_id))
     
     conn.commit()
     cur.close()
     conn.close()
 
-def get_users_for_reminders(day, reminder_type):
-    """Получить пользователей для отправки напоминаний"""
+def change_age_category(user_id, new_category):
+    """Сменить категорию возраста"""
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Вычисляем временной диапазон для дня
-    # День 1: от 0 до 24 часов назад
-    # День 2: от 24 до 48 часов назад
-    # День 3: от 48 до 72 часов назад
-    
-    hours_max = day * 24  # Максимум часов назад
-    hours_min = (day - 1) * 24  # Минимум часов назад
-    
-    time_start = datetime.now() - timedelta(hours=hours_max)
-    time_end = datetime.now() - timedelta(hours=hours_min)
-    
-    # Находим пользователей которым нужно отправить напоминание
-    cur.execute('''
-        SELECT u.user_id, u.username, u.day1_completed, u.day2_completed, u.day3_completed
-        FROM users u
-        LEFT JOIN reminders r ON u.user_id = r.user_id 
-            AND r.day = %s 
-            AND r.reminder_type = %s
-        WHERE u.started_at >= %s 
-          AND u.started_at < %s
-          AND r.user_id IS NULL
-          AND u.subscription_until IS NULL
-          AND (u.bot_blocked IS NULL OR u.bot_blocked = FALSE)
-    ''', (day, reminder_type, time_start, time_end))
-    
-    users = cur.fetchall()
-    cur.close()
-    conn.close()
-    return users
-
-def mark_reminder_sent(user_id, day, reminder_type):
-    """Отметить что напоминание отправлено"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    cur.execute('''INSERT INTO reminders (user_id, day, reminder_type, sent_at)
-                   VALUES (%s, %s, %s, %s)
-                   ON CONFLICT (user_id, day, reminder_type) DO NOTHING''',
-                (user_id, day, reminder_type, datetime.now()))
+    # Сохраняем оригинальную категорию если это первая смена
+    cur.execute('''UPDATE challenge_progress 
+                   SET age_category = %s, category_changed = TRUE
+                   WHERE user_id = %s''',
+                (new_category, user_id))
     
     conn.commit()
     cur.close()
     conn.close()
+
+def get_challenge_materials(age_category, day):
+    """Получить материалы для дня челленджа"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''SELECT * FROM challenge_materials 
+                   WHERE age_category = %s AND day = %s
+                   ORDER BY variant''',
+                (age_category, day))
+    materials = cur.fetchall()
+    cur.close()
+    conn.close()
+    return materials
+
+def is_challenge_participant(user_id):
+    """Проверить является ли пользователь участником челленджа"""
+    progress = get_challenge_progress(user_id)
+    if progress and progress.get('day3_completed'):
+        return True
+    return False
+
+# ========================================
+# КЛАВИАТУРЫ ДЛЯ ЧЕЛЛЕНДЖА
+# ========================================
+
+def get_age_keyboard():
+    """Клавиатура выбора возраста"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="3 года", callback_data="age_3"),
+            InlineKeyboardButton(text="4 года", callback_data="age_4"),
+            InlineKeyboardButton(text="5 лет", callback_data="age_5")
+        ],
+        [
+            InlineKeyboardButton(text="6 лет", callback_data="age_6"),
+            InlineKeyboardButton(text="7 лет", callback_data="age_7")
+        ]
+    ])
+    return keyboard
+
+def get_day_completed_keyboard_new(day):
+    """Кнопки завершения дня"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Выполнил", callback_data=f"day{day}_done")],
+        [InlineKeyboardButton(text="❌ Не получилось", callback_data=f"day{day}_failed")]
+    ])
+    return keyboard
+
+def get_time_keyboard(day):
+    """Клавиатура выбора времени"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Менее 5 мин", callback_data=f"time{day}_<5")],
+        [InlineKeyboardButton(text="5-10 мин", callback_data=f"time{day}_5-10")],
+        [InlineKeyboardButton(text="10-15 мин", callback_data=f"time{day}_10-15")],
+        [InlineKeyboardButton(text="Более 15 мин", callback_data=f"time{day}_>15")]
+    ])
+    return keyboard
+
+def get_difficulty_keyboard():
+    """Клавиатура оценки сложности"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="😊 Легко, справился быстро", callback_data="diff_easy")],
+        [InlineKeyboardButton(text="👍 Нормально, подходит", callback_data="diff_normal")],
+        [InlineKeyboardButton(text="😓 Сложно, не получилось", callback_data="diff_hard")]
+    ])
+    return keyboard
+
+def get_category_change_keyboard(new_category):
+    """Клавиатура предложения смены категории"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, перейти", callback_data=f"change_cat_{new_category}")],
+        [InlineKeyboardButton(text="Нет, оставить текущий", callback_data="keep_category")]
+    ])
+    return keyboard
+
+# ========================================
+# ХЭНДЛЕРЫ ЧЕЛЛЕНДЖА
+# ========================================
+
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message, state: FSMContext):
+    """Обработчик команды /start - автоматически запускает челлендж"""
+    user_id = message.from_user.id
+    username = message.from_user.username or "unknown"
+    
+    # Добавляем пользователя в БД
+    add_user(user_id, username)
+    
+    # Проверяем есть ли уже прогресс в челлендже
+    progress = get_challenge_progress(user_id)
+    
+    if progress and progress.get('is_active'):
+        # Челлендж уже идет
+        current_day = progress.get('current_day', 1)
+        await message.answer(
+            f"👋 С возвращением, {message.from_user.first_name}!\n\n"
+            f"Вы проходите челлендж «Супервнимание»!\n"
+            f"📅 Текущий день: {current_day}\n\n"
+            "Продолжайте занятия! 💪",
+            reply_markup=get_main_menu()
+        )
+        return
+    
+    # Проверяем завершен ли челлендж
+    if progress and progress.get('day3_completed'):
+        user = get_user(user_id)
+        # Проверяем есть ли активная подписка
+        if user and user.get('subscription_until'):
+            if datetime.now() < user['subscription_until']:
+                await message.answer(
+                    f"👋 Привет, {message.from_user.first_name}!\n\n"
+                    "У вас уже есть доступ к полному курсу! 🎉\n\n"
+                    "Переходите в клуб и продолжайте занятия!",
+                    reply_markup=get_main_menu()
+                )
+                return
+        
+        # Челлендж пройден, но подписки нет
+        await message.answer(
+            f"👋 Привет, {message.from_user.first_name}!\n\n"
+            "Вы прошли челлендж! 🏆\n\n"
+            "Готовы продолжить с полным курсом?",
+            reply_markup=get_main_menu()
+        )
+        return
+    
+    # Новый пользователь - начинаем челлендж
+    await message.answer(
+        f"👋 Привет, {message.from_user.first_name}!\n\n"
+        "🎯 <b>Добро пожаловать в 3-дневный челлендж</b>\n"
+        "<b>«Супервнимание»!</b>\n\n"
+        "За 3 дня вы:\n"
+        "✅ Улучшите концентрацию ребенка\n"
+        "✅ Получите готовые задания на каждый день\n"
+        "✅ Увидите первые результаты\n"
+        "✅ Научитесь развивать внимание через игру\n\n"
+        "💡 Все материалы уже готовы - начнем прямо сейчас!\n\n"
+        "📝 <b>Первый вопрос:</b>\n"
+        "Сколько лет вашему ребенку?",
+        reply_markup=get_age_keyboard(),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(ChallengeStates.CHOOSING_AGE)
+
+@dp.callback_query(F.data.startswith("age_"), StateFilter(ChallengeStates.CHOOSING_AGE))
+async def process_age_selection(callback: types.CallbackQuery, state: FSMContext):
+    """Обработка выбора возраста"""
+    user_id = callback.from_user.id
+    age = int(callback.data.split("_")[1])
+    
+    # Определяем категорию
+    category = determine_age_category(age)
+    
+    # Сохраняем в БД
+    start_challenge(user_id, age)
+    
+    # Формируем текст в зависимости от категории
+    category_text = {
+        '3-5': '3-5 лет',
+        '4-6': '4-6 лет',
+        '5-7': '5-7 лет'
+    }
+    
+    await callback.message.edit_text(
+        f"Отлично! Для ребенка {age} лет я подобрал категорию <b>{category_text[category]}</b>.\n\n"
+        "🎯 <b>ДЕНЬ 1: Тестирование</b>\n\n"
+        "Сегодня проверим текущий уровень концентрации ребенка.\n\n"
+        "Готовы начать?\n\n"
+        "👇 Нажмите кнопку ниже, когда будете готовы получить задания!",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Начать День 1!", callback_data="start_day1")]
+        ]),
+        parse_mode="HTML"
+    )
+    
+    await state.clear()
+    await callback.answer()
+
+@dp.callback_query(F.data == "start_day1")
+async def start_day1(callback: types.CallbackQuery):
+    """Начало Дня 1"""
+    user_id = callback.from_user.id
+    progress = get_challenge_progress(user_id)
+    
+    if not progress:
+        await callback.answer("Ошибка! Начните с /start", show_alert=True)
+        return
+    
+    category = progress['age_category']
+    
+    # Получаем материалы для этой категории
+    materials = get_challenge_materials(category, 1)
+    
+    # Формируем список вариантов
+    if category == '3-5':
+        variants_text = (
+            "🟢 Вариант 1: «Найди отличия»\n"
+            "🟢 Вариант 2: «Лабиринт»\n"
+            "🟢 Вариант 3: «Найди пару»"
+        )
+    elif category == '4-6':
+        variants_text = (
+            "🟢 Вариант 1: «Найди спрятанные объекты»\n"
+            "🟢 Вариант 2: «Дорисуй половинку»\n"
+            "🟢 Вариант 3: «Сортировка по категориям»\n"
+            "🟢 Вариант 4: «Лабиринт»"
+        )
+    else:  # 5-7
+        variants_text = (
+            "🟢 Вариант 1: «Соедини точки по числам (1-20)»\n"
+            "🟢 Вариант 2: «Раскраски с категориями»\n"
+            "🟢 Вариант 3: «Задания на классификацию»"
+        )
+    
+    text = (
+        "🎯 <b>ДЕНЬ 1: Тестирование</b>\n\n"
+        "Предложите ребенку на выбор — пусть сам решит, что ему интереснее:\n\n"
+        f"{variants_text}\n\n"
+        "Ребенок может выбрать один вариант или попробовать все, если ему понравится!\n\n"
+        "⏱ <b>ВАЖНО:</b> Засеките время - сколько долго ребенок будет вовлечен в процесс.\n\n"
+    )
+    
+    # Если есть материалы - отправляем
+    if materials:
+        text += "📎 Сейчас отправлю вам все материалы...\n\n"
+    else:
+        text += "⚠️ <i>Материалы для этого дня еще загружаются. Пока вы можете использовать свои задания.</i>\n\n"
+    
+    await callback.message.edit_text(text, parse_mode="HTML")
+    
+    # Отправляем материалы
+    if materials:
+        for material in materials:
+            try:
+                caption = f"📄 <b>{material['title']}</b>"
+                if material.get('description'):
+                    caption += f"\n\n{material['description']}"
+                
+                if material['file_type'] == 'photo':
+                    await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                elif material['file_type'] == 'document':
+                    await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error sending material: {e}")
+    
+    # Отправляем кнопки завершения
+    await bot.send_message(
+        user_id,
+        "Выполнили задание?",
+        reply_markup=get_day_completed_keyboard_new(1)
+    )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == "day1_done")
+async def day1_completed(callback: types.CallbackQuery):
+    """День 1 выполнен - спрашиваем время"""
+    await callback.message.edit_text(
+        "Отлично! 👏\n\n"
+        "Сколько времени ребенок был увлечен заданием?",
+        reply_markup=get_time_keyboard(1)
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("time1_"))
+async def day1_time_selected(callback: types.CallbackQuery):
+    """Время Дня 1 выбрано - спрашиваем сложность"""
+    user_id = callback.from_user.id
+    time_value = callback.data.replace("time1_", "")
+    
+    # Сохраняем временно в state (пока не спросили сложность)
+    await callback.message.edit_text(
+        "Хорошо! Записал. ✍️\n\n"
+        "Как ребенку далось задание?",
+        reply_markup=get_difficulty_keyboard()
+    )
+    
+    # Сохраняем время в БД временно
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('UPDATE challenge_progress SET day1_time = %s WHERE user_id = %s', 
+                (time_value, user_id))
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("diff_"))
+async def day1_difficulty_selected(callback: types.CallbackQuery):
+    """Сложность Дня 1 выбрана"""
+    user_id = callback.from_user.id
+    difficulty = callback.data.replace("diff_", "")
+    
+    progress = get_challenge_progress(user_id)
+    time_spent = progress.get('day1_time')
+    
+    # Обновляем БД
+    update_challenge_day(user_id, 1, time_spent, difficulty)
+    
+    # В зависимости от сложности - предлагаем смену категории или просто хвалим
+    if difficulty == 'easy':
+        # Предлагаем повысить сложность
+        current_category = progress['age_category']
+        
+        if current_category == '3-5':
+            new_category = '4-6'
+        elif current_category == '4-6':
+            new_category = '5-7'
+        else:
+            new_category = None
+        
+        if new_category:
+            await callback.message.edit_text(
+                "Вижу что ребенок справляется легко! 💪\n\n"
+                f"Хотите попробовать задания посложнее (категория {new_category} лет)?\n\n"
+                "Это поможет лучше развивать навыки!",
+                reply_markup=get_category_change_keyboard(new_category)
+            )
+        else:
+            # Уже максимальная сложность
+            await callback.message.edit_text(
+                "🎉 <b>Поздравляю! День 1 пройден!</b>\n\n"
+                "Отличное начало! Ребенок справился легко! 💪\n\n"
+                "📅 <b>Завтра:</b> День 2 - продолжим развивать внимание!\n\n"
+                "Я напомню вам утром. А пока - отдохните и гордитесь собой! 😊",
+                parse_mode="HTML",
+                reply_markup=get_main_menu()
+            )
+    
+    elif difficulty == 'hard':
+        # Предлагаем понизить сложность
+        current_category = progress['age_category']
+        
+        if current_category == '5-7':
+            new_category = '4-6'
+        elif current_category == '4-6':
+            new_category = '3-5'
+        else:
+            new_category = None
+        
+        if new_category:
+            await callback.message.edit_text(
+                "Понимаю, бывает сложно! 😊\n\n"
+                f"Хотите попробовать задания попроще (категория {new_category} лет)?\n\n"
+                "Главное - чтобы ребенку было интересно!",
+                reply_markup=get_category_change_keyboard(new_category)
+            )
+        else:
+            # Уже минимальная сложность
+            await callback.message.edit_text(
+                "🎉 <b>Поздравляю! День 1 пройден!</b>\n\n"
+                "Всё хорошо! Не расстраивайтесь - такие задания развивают упорство. 💪\n\n"
+                "📅 <b>Завтра:</b> День 2 - будет легче!\n\n"
+                "Я напомню вам утром. Отдохните! 😊",
+                parse_mode="HTML",
+                reply_markup=get_main_menu()
+            )
+    
+    else:  # normal
+        await callback.message.edit_text(
+            "🎉 <b>Поздравляю! День 1 пройден!</b>\n\n"
+            "Отличное начало! Идеальный уровень сложности! 💪\n\n"
+            "📅 <b>Завтра:</b> День 2 - продолжим развивать навыки!\n\n"
+            "Я напомню вам утром. А пока - отдохните и гордитесь собой! 😊",
+            parse_mode="HTML",
+            reply_markup=get_main_menu()
+        )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("change_cat_"))
+async def change_category(callback: types.CallbackQuery):
+    """Смена категории"""
+    user_id = callback.from_user.id
+    new_category = callback.data.replace("change_cat_", "")
+    
+    # Обновляем категорию
+    change_age_category(user_id, new_category)
+    
+    await callback.message.edit_text(
+        f"Отлично! Перевёл вас в категорию {new_category} лет. ✅\n\n"
+        "🎉 <b>День 1 пройден!</b>\n\n"
+        "📅 <b>Завтра:</b> День 2 с новыми заданиями под новый уровень!\n\n"
+        "Я напомню вам утром. Отдохните! 😊",
+        parse_mode="HTML",
+        reply_markup=get_main_menu()
+    )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == "keep_category")
+async def keep_category(callback: types.CallbackQuery):
+    """Оставить текущую категорию"""
+    await callback.message.edit_text(
+        "Хорошо! Оставляем текущий уровень. ✅\n\n"
+        "🎉 <b>День 1 пройден!</b>\n\n"
+        "📅 <b>Завтра:</b> День 2 - продолжим!\n\n"
+        "Я напомню вам утром. Отдохните! 😊",
+        parse_mode="HTML",
+        reply_markup=get_main_menu()
+    )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == "day1_failed")
+async def day1_failed(callback: types.CallbackQuery):
+    """День 1 не получился"""
+    await callback.message.edit_text(
+        "Не расстраивайтесь! Бывает. 😊\n\n"
+        "Что помешало?\n"
+        "• Нет времени?\n"
+        "• Ребенок не захотел?\n"
+        "• Задание показалось сложным?\n\n"
+        "Попробуйте сегодня вечером или завтра утром!\n\n"
+        "Главное - не сдавайтесь! 💪",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Попробую еще раз", callback_data="start_day1")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back")]
+        ])
+    )
+    
+    await callback.answer()
+
+# ========================================
+# СТАРЫЕ ФУНКЦИИ (сохраняем для совместимости)
+# ========================================
+
+def get_main_menu():
+    """Главное меню"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="ℹ️ Мой прогресс", callback_data="my_progress")],
+        [InlineKeyboardButton(text="💎 Полный курс", callback_data="show_tariffs")],
+        [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
+    ])
+    return keyboard
+
+# ПРОДОЛЖЕНИЕ ФАЙЛА bot_v2_part1.py
+# Эту часть нужно добавить после строки "# ... (остальной код продолжение следует)"
+
+# ========================================
+# ОПЛАТА И YOOKASSA (без изменений)
+# ========================================
 
 def create_payment(user_id, amount, tariff, yookassa_id):
     """Создание записи о платеже"""
@@ -238,6 +798,8 @@ def grant_subscription(user_id, tariff_code):
     # Проверяем в каком словаре искать тариф
     if tariff_code in TARIFFS:
         tariff = TARIFFS[tariff_code]
+    elif tariff_code in CHALLENGE_TARIFFS:
+        tariff = CHALLENGE_TARIFFS[tariff_code]
     else:
         tariff = TARIFFS_STARS[tariff_code]
     
@@ -248,36 +810,15 @@ def grant_subscription(user_id, tariff_code):
                    WHERE user_id = %s''',
                 (subscription_until, tariff_code, user_id))
     
+    # Отмечаем что участник челленджа купил
+    cur.execute('''UPDATE challenge_progress 
+                   SET purchased = TRUE 
+                   WHERE user_id = %s''',
+                (user_id,))
+    
     conn.commit()
     cur.close()
     conn.close()
-    
-def mark_user_blocked(user_id, blocked=True):
-    """Пометить пользователя как заблокировавшего бота"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    # Добавляем колонку bot_blocked, если её нет
-    try:
-        cur.execute('ALTER TABLE users ADD COLUMN IF NOT EXISTS bot_blocked BOOLEAN DEFAULT FALSE')
-        conn.commit()
-    except:
-        pass
-    
-    cur.execute('UPDATE users SET bot_blocked = %s WHERE user_id = %s', (blocked, user_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def is_russian_user(user):
-    """Определяем российского пользователя по language_code"""
-    if hasattr(user, 'language_code'):
-        return user.language_code == 'ru'
-    return True  # По умолчанию считаем российским    
-
-# ========================================
-# ЮKASSA API
-# ========================================
 
 async def create_yookassa_payment(amount, description, user_id):
     """Создание платежа в ЮKassa"""
@@ -341,29 +882,11 @@ async def check_yookassa_payment(payment_id):
                 return None
 
 # ========================================
-# КЛАВИАТУРЫ
+# КЛАВИАТУРЫ ДЛЯ ОПЛАТЫ
 # ========================================
 
-def get_main_menu():
-    """Главное меню"""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Начать челлендж", callback_data="start_challenge")],
-        [InlineKeyboardButton(text="ℹ️ Мой прогресс", callback_data="my_progress")],
-        [InlineKeyboardButton(text="💎 Полный курс", callback_data="show_tariffs")],
-        [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
-    ])
-    return keyboard
-
-def get_day_completed_keyboard(day):
-    """Кнопка отметки дня"""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"✅ День {day} пройден!", callback_data=f"complete_day_{day}")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
-    ])
-    return keyboard
-
-def get_tariffs_menu(use_stars=False):
-    """Меню выбора тарифов с Decoy Pricing"""
+def get_tariffs_menu(use_stars=False, is_challenge_participant=False):
+    """Меню выбора тарифов"""
     if use_stars:
         # Меню для Stars (международные пользователи)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -381,8 +904,21 @@ def get_tariffs_menu(use_stars=False):
             )],
             [InlineKeyboardButton(text="◀️ Back", callback_data="back")]
         ])
+    elif is_challenge_participant:
+        # СПЕЦИАЛЬНЫЕ ЦЕНЫ ДЛЯ УЧАСТНИКОВ ЧЕЛЛЕНДЖА
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"1️⃣ 1 месяц - {CHALLENGE_TARIFFS['1month']['price']}₽ 🔥 -40%!",
+                callback_data="challenge_1month"
+            )],
+            [InlineKeyboardButton(
+                text=f"♾️ НАВСЕГДА - {CHALLENGE_TARIFFS['forever']['price']}₽ 🔥 ВЫГОДНЕЕ!",
+                callback_data="challenge_forever"
+            )],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
+        ])
     else:
-        # Меню для ЮКассы (российские пользователи)
+        # Обычные цены
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"1️⃣ 1 месяц - {TARIFFS['1month']['price']}₽",
@@ -393,7 +929,7 @@ def get_tariffs_menu(use_stars=False):
                 callback_data="3months"
             )],
             [InlineKeyboardButton(
-                text=f"♾️ НАВСЕГДА - {TARIFFS['forever']['price']}₽ 🔥 ВЫГОДНЕЕ!",
+                text=f"♾️ НАВСЕГДА - {TARIFFS['forever']['price']}₽",
                 callback_data="forever"
             )],
             [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
@@ -401,211 +937,60 @@ def get_tariffs_menu(use_stars=False):
     return keyboard
 
 # ========================================
-# ОБРАБОТЧИКИ КОМАНД
+# ОБРАБОТЧИКИ МЕНЮ И ПРОГРЕССА
 # ========================================
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    """Обработчик команды /start"""
-    user_id = message.from_user.id
-    username = message.from_user.username or "unknown"
-    
-    # Добавляем пользователя в БД
-    add_user(user_id, username)
-    
-    user = get_user(user_id)
-    
-    # Проверяем есть ли активная подписка
-    if user and user.get('subscription_until'):
-        if datetime.now() < user['subscription_until']:
-            await message.answer(
-                f"👋 Привет, {message.from_user.first_name}!\n\n"
-                "У вас уже есть доступ к полному курсу! 🎉\n\n"
-                "Переходите в клуб и продолжайте занятия!",
-                reply_markup=get_main_menu()
-            )
-            return
-    
-    # Новый пользователь или без подписки
-    await message.answer(
-        f"👋 Привет, {message.from_user.first_name}!\n\n"
-        "🎯 <b>Добро пожаловать в 3-дневный интенсив</b>\n"
-        "<b>«Супервнимание»</b>\n\n"
-        "За 3 дня вы:\n"
-        "✅ Научитесь играть с ребёнком в развивающие игры\n"
-        "✅ Получите 10 готовых игр\n"
-        "✅ Увидите первые результаты\n"
-        "✅ Поймёте как составлять план на день\n\n"
-        "💡 Все материалы уже готовы - начните прямо сейчас!",
-        reply_markup=get_main_menu(),
-        parse_mode="HTML"
-    )
-
-@dp.callback_query(F.data == "start_challenge")
-async def start_challenge(callback: types.CallbackQuery):
-    """Начало челленджа"""
-    user_id = callback.from_user.id
-    user = get_user(user_id)
-    
-    if not user:
-        add_user(user_id, callback.from_user.username or "unknown")
-    
-    await callback.message.edit_text(
-        "🚀 <b>Отлично! Начинаем!</b>\n\n"
-        "📚 <b>Шаг 1:</b> Присоединитесь к каналу челленджа\n\n"
-        f"👉 {CHALLENGE_CHANNEL_LINK}\n\n"
-        "Там вас ждут все материалы на 3 дня:\n"
-        "• День 1: Видео + задание\n"
-        "• День 2: Материалы + практика\n"
-        "• День 3: Финальное задание\n\n"
-        "После подписки возвращайтесь сюда - я буду напоминать о занятиях и помогать! 💪",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Я подписался!", callback_data="check_subscription")],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
-        ]),
-        parse_mode="HTML"
-    )
-    
-    await callback.answer()
-
-@dp.callback_query(F.data == "check_subscription")
-async def check_subscription(callback: types.CallbackQuery):
-    """Проверка подписки на канал"""
-    user_id = callback.from_user.id
-    
-    try:
-        # Проверяем подписку
-        member = await bot.get_chat_member(CHALLENGE_CHANNEL_ID, user_id)
-        
-        if member.status in ['member', 'administrator', 'creator']:
-            await callback.message.edit_text(
-                "🎉 <b>Отлично! Вы подписаны!</b>\n\n"
-                "Теперь вы в челлендже!\n\n"
-                "📅 <b>Что дальше:</b>\n\n"
-                "• Каждое утро (9:00) я буду напоминать о занятии\n"
-                "• Каждый вечер (20:00) спрошу о прогрессе\n"
-                "• После 3 дней - сюрприз! 🎁\n\n"
-                "💡 Начните прямо сейчас с Дня 1 в канале!",
-                reply_markup=get_main_menu(),
-                parse_mode="HTML"
-            )
-            
-            # Уведомление админу
-            if ADMIN_ID:
-                await bot.send_message(
-                    ADMIN_ID,
-                    f"🎯 Новый участник челленджа!\n"
-                    f"👤 @{callback.from_user.username or 'unknown'} (ID: {user_id})"
-                )
-        else:
-            await callback.answer(
-                "❌ Вы ещё не подписались на канал! Подпишитесь и возвращайтесь.",
-                show_alert=True
-            )
-    
-    except Exception as e:
-        logging.error(f"Error checking subscription: {e}")
-        await callback.answer(
-            "❌ Ошибка проверки подписки. Попробуйте позже.",
-            show_alert=True
-        )
-
-@dp.callback_query(F.data.startswith("complete_day_"))
-async def complete_day(callback: types.CallbackQuery):
-    """Отметка прохождения дня"""
-    user_id = callback.from_user.id
-    day = int(callback.data.split("_")[-1])
-    
-    user = get_user(user_id)
-    
-    if not user:
-        await callback.answer("Ошибка! Начните с /start", show_alert=True)
-        return
-    
-    # Отмечаем день
-    mark_day_completed(user_id, day)
-    
-    # Поздравление в зависимости от дня
-    if day == 1:
-        text = (
-            "🎉 <b>Поздравляю! День 1 пройден!</b>\n\n"
-            "Отличное начало! 💪\n\n"
-            "📅 <b>Завтра:</b>\n"
-            "День 2 - ещё интереснее!\n\n"
-            "Я напомню вам утром. А пока - отдохните и гордитесь собой! 😊"
-        )
-    elif day == 2:
-        text = (
-            "🎉 <b>Браво! День 2 позади!</b>\n\n"
-            "Вы на финишной прямой! 🏃\n\n"
-            "📅 <b>Завтра:</b>\n"
-            "День 3 - последний рывок!\n\n"
-            "Вы уже так много сделали - осталось совсем чуть-чуть! 💪"
-        )
-    else:  # day == 3
-        text = (
-            "🎉 <b>ПОЗДРАВЛЯЮ! Вы прошли весь челлендж!</b>\n\n"
-            "Вы большой молодец! 🏆\n\n"
-            "За 3 дня вы:\n"
-            "✅ Научились играть с ребёнком развивающе\n"
-            "✅ Освоили 10 готовых игр\n"
-            "✅ Увидели первые результаты\n\n"
-            "💎 <b>Что дальше?</b>\n\n"
-            "Не останавливайтесь на достигнутом!\n\n"
-            "Полный курс «Супервнимание» поможет вам:\n"
-            "• Пройти 14-дневную программу\n"
-            "• Получить 1000+ материалов\n"
-            "• Новые игры каждую неделю\n"
-            "• Поддержку и советы\n"
-            "• Готовые планы на каждый день\n\n"
-            "🎁 Специальная цена для участников челленджа!"
-        )
-    
-    await callback.message.edit_text(
-        text,
-        reply_markup=get_main_menu() if day == 3 else InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back")]
-        ]),
-        parse_mode="HTML"
-    )
-    
-    await callback.answer()
 
 @dp.callback_query(F.data == "my_progress")
 async def my_progress(callback: types.CallbackQuery):
     """Показать прогресс пользователя"""
     user_id = callback.from_user.id
-    user = get_user(user_id)
+    progress = get_challenge_progress(user_id)
     
-    if not user:
-        await callback.answer("Начните с /start", show_alert=True)
+    if not progress:
+        await callback.answer("Начните челлендж с /start", show_alert=True)
         return
+    
+    # Формируем текст
+    text = "📊 <b>Ваш прогресс в челлендже:</b>\n\n"
+    text += f"Категория: {progress['age_category']} лет\n"
+    text += f"Возраст ребенка: {progress['age']} лет\n\n"
+    
+    text += f"День 1: {'✅' if progress.get('day1_completed') else '⏳'}"
+    if progress.get('day1_time'):
+        text += f" ({progress['day1_time']} мин)\n"
+    else:
+        text += "\n"
+    
+    text += f"День 2: {'✅' if progress.get('day2_completed') else '⏳'}"
+    if progress.get('day2_time'):
+        text += f" ({progress['day2_time']} мин)\n"
+    else:
+        text += "\n"
+    
+    text += f"День 3: {'✅' if progress.get('day3_completed') else '⏳'}"
+    if progress.get('day3_time'):
+        text += f" ({progress['day3_time']} мин)\n"
+    else:
+        text += "\n"
     
     # Считаем прогресс
     completed = 0
-    if user.get('day1_completed'):
+    if progress.get('day1_completed'):
         completed += 1
-    if user.get('day2_completed'):
+    if progress.get('day2_completed'):
         completed += 1
-    if user.get('day3_completed'):
+    if progress.get('day3_completed'):
         completed += 1
     
-    # Считаем дни с начала
-    if user.get('started_at'):
-        days_passed = (datetime.now() - user['started_at']).days
-    else:
-        days_passed = 0
+    text += f"\nПройдено: {completed}/3 дней\n"
     
-    # Формируем текст
-    text = "📊 <b>Ваш прогресс:</b>\n\n"
-    text += f"День 1: {'✅' if user.get('day1_completed') else '⏳'}\n"
-    text += f"День 2: {'✅' if user.get('day2_completed') else '⏳'}\n"
-    text += f"День 3: {'✅' if user.get('day3_completed') else '⏳'}\n\n"
-    text += f"Пройдено: {completed}/3 дней\n"
-    text += f"С начала: {days_passed} дн.\n\n"
+    if progress.get('started_at'):
+        days_passed = (datetime.now() - progress['started_at']).days
+        text += f"С начала: {days_passed} дн.\n\n"
     
     if completed == 3:
-        text += "🏆 Челлендж пройден! Поздравляем!"
+        text += "🏆 Челлендж завершен! Поздравляем!\n\n"
+        text += "Готовы продолжить с полным курсом?"
     else:
         text += "💪 Продолжайте в том же духе!"
     
@@ -619,16 +1004,40 @@ async def my_progress(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "show_tariffs")
 async def show_tariffs(callback: types.CallbackQuery):
-    """Показать выбор способа оплаты"""
+    """Показать тарифы"""
+    user_id = callback.from_user.id
+    
+    # Проверяем является ли участником челленджа
+    is_participant = is_challenge_participant(user_id)
+    
+    if is_participant:
+        text = (
+            "💎 <b>Полный курс «Супервнимание»</b>\n\n"
+            "🎉 <b>СПЕЦИАЛЬНАЯ ЦЕНА ДЛЯ ВАС!</b>\n"
+            "Вы прошли челлендж - получите скидку 40%!\n\n"
+            "🎯 Что вы получите:\n\n"
+            "📚 Полный курс на год\n"
+            "🎮 1000+ материалов\n"
+            "🎨 Новые игры каждую неделю\n"
+            "💬 Поддержка в чате\n"
+            "📅 Готовые планы на каждый день\n\n"
+            "⏰ <b>Предложение действует 24 часа!</b>\n\n"
+            "💳 <b>Выберите способ оплаты:</b>"
+        )
+    else:
+        text = (
+            "💎 <b>Полный курс «Супервнимание»</b>\n\n"
+            "🎯 Что вы получите:\n\n"
+            "📚 Полный курс на год\n"
+            "🎮 1000+ материалов\n"
+            "🎨 Новые игры каждую неделю\n"
+            "💬 Поддержка в чате\n"
+            "📅 Готовые планы на каждый день\n\n"
+            "💳 <b>Выберите способ оплаты:</b>"
+        )
+    
     await callback.message.edit_text(
-        "💎 <b>Полный курс «Супервнимание»</b>\n\n"
-        "🎯 Что вы получите:\n\n"
-        "📚 Полный 14-дневный курс\n"
-        "🎮 1000+ материалов (вместо 11)\n"
-        "🎨 Новые игры каждую неделю\n"
-        "💬 Поддержка и советы\n"
-        "📅 Готовые планы на каждый день\n\n"
-        "💳 <b>Выберите способ оплаты:</b>",
+        text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Карта РФ (рубли)", callback_data="payment_rub")],
             [InlineKeyboardButton(text="⭐ Карта не РФ (Telegram Stars)", callback_data="payment_stars")],
@@ -641,12 +1050,22 @@ async def show_tariffs(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "payment_rub")
 async def show_tariffs_rub(callback: types.CallbackQuery):
-    """Показать тарифы для оплаты рублями через ЮКассу"""
+    """Показать тарифы для оплаты рублями"""
+    user_id = callback.from_user.id
+    is_participant = is_challenge_participant(user_id)
+    
+    if is_participant:
+        text = (
+            "💎 <b>Специальная цена для участников челленджа!</b>\n\n"
+            "🔥 Скидка 40% только для вас!\n\n"
+            "⏰ Действует 24 часа после прохождения челленджа!"
+        )
+    else:
+        text = "💎 <b>Полный курс «Супервнимание»</b>\n\n💰 <b>Оплата картой РФ:</b>"
+    
     await callback.message.edit_text(
-        "💎 <b>Полный курс «Супервнимание»</b>\n\n"
-        "💰 <b>Оплата картой РФ (рубли):</b>\n\n"
-        "🔥 <b>Обратите внимание:</b> тариф «Навсегда» выгоднее чем на 3 месяца!",
-        reply_markup=get_tariffs_menu(use_stars=False),
+        text,
+        reply_markup=get_tariffs_menu(use_stars=False, is_challenge_participant=is_participant),
         parse_mode="HTML"
     )
     
@@ -657,17 +1076,66 @@ async def show_tariffs_stars(callback: types.CallbackQuery):
     """Показать тарифы для оплаты Stars"""
     await callback.message.edit_text(
         "💎 <b>Full Course 'Super Attention'</b>\n\n"
-        "⭐ <b>Payment with Telegram Stars:</b>\n\n"
-        "🔥 <b>Note:</b> 'Forever' plan is more profitable than 3 months!",
+        "⭐ <b>Payment with Telegram Stars:</b>",
         reply_markup=get_tariffs_menu(use_stars=True),
         parse_mode="HTML"
     )
     
     await callback.answer()
 
+# ========================================
+# ОБРАБОТЧИКИ ОПЛАТЫ
+# ========================================
+
+@dp.callback_query(F.data.startswith("challenge_"))
+async def process_challenge_tariff(callback: types.CallbackQuery):
+    """Обработка выбора тарифа со скидкой для участников челленджа"""
+    user_id = callback.from_user.id
+    tariff_code = callback.data.replace("challenge_", "")
+    tariff = CHALLENGE_TARIFFS[tariff_code]
+    
+    await callback.answer("⏳ Создаём платёж...", show_alert=False)
+    
+    payment = await create_yookassa_payment(
+        amount=tariff['price'],
+        description=f"Полный курс (челлендж): {tariff['name']}",
+        user_id=user_id
+    )
+    
+    if not payment:
+        await callback.message.edit_text(
+            "❌ Ошибка создания платежа. Попробуйте позже.",
+            reply_markup=get_main_menu()
+        )
+        return
+    
+    create_payment(user_id, tariff['price'], tariff_code, payment['id'])
+    confirmation_url = payment['confirmation']['confirmation_url']
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
+        [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_{payment['id']}")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
+    ])
+    
+    await callback.message.edit_text(
+        f"📦 <b>СПЕЦИАЛЬНАЯ ЦЕНА!</b>\n\n"
+        f"Вы выбрали: {tariff['name']}\n\n"
+        f"💰 Обычная цена: <s>{tariff['old_price']}₽</s>\n"
+        f"🔥 Цена для вас: <b>{tariff['price']}₽</b>\n"
+        f"💎 Экономия: {tariff['old_price'] - tariff['price']}₽!\n\n"
+        f"⏰ <b>Предложение действует 24 часа!</b>\n\n"
+        f"1️⃣ Нажмите «Оплатить»\n"
+        f"2️⃣ Завершите оплату\n"
+        f"3️⃣ Вернитесь и нажмите «Проверить оплату»\n\n"
+        f"⚠️ Доступ откроется автоматически!",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
 @dp.callback_query(F.data.in_(['1month', '3months', 'forever']))
 async def process_tariff(callback: types.CallbackQuery):
-    """Обработка выбора тарифа"""
+    """Обработка выбора обычного тарифа"""
     user_id = callback.from_user.id
     tariff_code = callback.data
     tariff = TARIFFS[tariff_code]
@@ -698,65 +1166,13 @@ async def process_tariff(callback: types.CallbackQuery):
     
     await callback.message.edit_text(
         f"📦 <b>Вы выбрали: {tariff['name']}</b>\n\n"
-        f"💰 Полная цена: <s>{tariff['old_price']}₽</s>\n"
-        f"💳 К оплате: <b>{tariff['price']}₽</b>\n\n"
+        f"💰 К оплате: <b>{tariff['price']}₽</b>\n\n"
         f"1️⃣ Нажмите «Оплатить»\n"
         f"2️⃣ Завершите оплату\n"
-        f"3️⃣ Вернитесь и нажмите «Проверить оплату»\n\n"
-        f"⚠️ Доступ откроется автоматически!",
+        f"3️⃣ Вернитесь и нажмите «Проверить оплату»",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
-
-@dp.callback_query(F.data.startswith("stars_"))
-async def process_stars_tariff(callback: types.CallbackQuery):
-    """Обработка выбора тарифа через Stars"""
-    user_id = callback.from_user.id
-    tariff_code = callback.data.replace("stars_", "")
-    tariff = TARIFFS_STARS[tariff_code]
-    
-    await callback.answer("⏳ Creating invoice...", show_alert=False)
-    
-    # Создаём инвойс для Stars
-    prices = [types.LabeledPrice(label=tariff['name'], amount=tariff['price'])]
-    
-    try:
-        await bot.send_invoice(
-            chat_id=user_id,
-            title=f"Full Course: {tariff['name']}",
-            description=f"Access to the full course for {tariff['days']} days",
-            payload=f"{user_id}_{tariff_code}",
-            provider_token="",  # Пустая строка для Stars
-            currency="XTR",  # Telegram Stars
-            prices=prices,
-            photo_url="https://i.imgur.com/placeholder.jpg",  # Замените на свою картинку
-            photo_size=512,
-            photo_width=512,
-            photo_height=512,
-            need_name=False,
-            need_phone_number=False,
-            need_email=False,
-            need_shipping_address=False,
-            is_flexible=False
-        )
-        
-        await callback.message.edit_text(
-            f"✨ <b>Payment via Telegram Stars</b>\n\n"
-            f"📦 Plan: {tariff['name']}\n"
-            f"⭐ Price: {tariff['price']} stars\n\n"
-            f"The invoice has been sent to you! Pay it to get access.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="◀️ Back", callback_data="back")]
-            ]),
-            parse_mode="HTML"
-        )
-    
-    except Exception as e:
-        logging.error(f"Error creating Stars invoice: {e}")
-        await callback.message.edit_text(
-            "❌ Error creating invoice. Please try again later.",
-            reply_markup=get_main_menu()
-        )
 
 @dp.callback_query(F.data.startswith("check_"))
 async def check_payment(callback: types.CallbackQuery):
@@ -777,14 +1193,19 @@ async def check_payment(callback: types.CallbackQuery):
         if payment:
             user_id = payment['user_id']
             tariff_code = payment['tariff']
-            tariff = TARIFFS[tariff_code]
+            
+            # Определяем из какого словаря тариф
+            if tariff_code in CHALLENGE_TARIFFS:
+                tariff = CHALLENGE_TARIFFS[tariff_code]
+            else:
+                tariff = TARIFFS[tariff_code]
             
             update_payment_status(yookassa_payment_id, 'completed')
             grant_subscription(user_id, tariff_code)
             
             try:
                 # Создаём инвайт в клуб
-                if tariff_code == 'forever':
+                if tariff_code == 'forever' or 'forever' in tariff_code:
                     invite_link = await bot.create_chat_invite_link(CLUB_CHANNEL_ID, member_limit=1)
                 else:
                     invite_link = await bot.create_chat_invite_link(
@@ -831,7 +1252,6 @@ async def go_back(callback: types.CallbackQuery):
     """Возврат в главное меню"""
     await callback.message.edit_text(
         f"👋 Привет, {callback.from_user.first_name}!\n\n"
-        "🎯 <b>3-дневный интенсив «Супервнимание»</b>\n\n"
         "Выберите действие:",
         reply_markup=get_main_menu(),
         parse_mode="HTML"
@@ -848,9 +1268,9 @@ async def show_faq(callback: types.CallbackQuery):
         "<b>Q: Это бесплатно?</b>\n"
         "A: Да! Челлендж полностью бесплатный.\n\n"
         "<b>Q: Что после челленджа?</b>\n"
-        "A: Вы сможете продолжить в полном курсе (14 дней + 1000 материалов).\n\n"
+        "A: Вы получите специальную скидку 40% на полный курс!\n\n"
         "<b>Q: Как получить доступ к клубу?</b>\n"
-        "A: Выберите тариф и оплатите - доступ откроется автоматически.\n\n"
+        "A: Пройдите челлендж и купите полный курс со скидкой.\n\n"
         "💬 Остались вопросы? Напишите @razvitie_dety",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
@@ -858,186 +1278,6 @@ async def show_faq(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
     await callback.answer()
-
-@dp.pre_checkout_query()
-async def pre_checkout_handler(pre_checkout_query: types.PreCheckoutQuery):
-    """Обработка pre-checkout для Stars"""
-    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
-
-@dp.message(F.successful_payment)
-async def successful_payment_handler(message: types.Message):
-    """Обработка успешной оплаты Stars"""
-    user_id = message.from_user.id
-    payload = message.successful_payment.invoice_payload
-    
-    try:
-        _, tariff_code = payload.rsplit('_', 1)
-        tariff = TARIFFS_STARS[tariff_code]
-        
-        grant_subscription(user_id, tariff_code)
-        
-        try:
-            if tariff_code == 'forever':
-                invite_link = await bot.create_chat_invite_link(CLUB_CHANNEL_ID, member_limit=1)
-            else:
-                invite_link = await bot.create_chat_invite_link(
-                    CLUB_CHANNEL_ID,
-                    member_limit=1,
-                    expire_date=datetime.now() + timedelta(days=tariff['days'])
-                )
-            
-            await message.answer(
-                f"✅ <b>Payment successful!</b>\n\n"
-                f"🎉 Congratulations! You got full access!\n"
-                f"📅 Plan: {tariff['name']}\n\n"
-                f"Join the club:\n{invite_link.invite_link}",
-                reply_markup=get_main_menu(),
-                parse_mode="HTML"
-            )
-            
-            if ADMIN_ID:
-                await bot.send_message(
-                    ADMIN_ID,
-                    f"⭐ New Stars payment!\n"
-                    f"👤 @{message.from_user.username or 'unknown'} (ID: {user_id})\n"
-                    f"📦 Plan: {tariff['name']}\n"
-                    f"⭐ Amount: {tariff['price']} stars"
-                )
-        
-        except Exception as e:
-            logging.error(f"Error creating invite after Stars payment: {e}")
-            await message.answer(
-                "✅ Payment received!\n"
-                "❌ Error creating invitation.\n"
-                "Contact administrator.",
-                reply_markup=get_main_menu()
-            )
-    
-    except Exception as e:
-        logging.error(f"Error processing Stars payment: {e}")
-        await message.answer(
-            "❌ Error processing payment. Contact administrator.",
-            reply_markup=get_main_menu()
-        )
-
-# ========================================
-# ФОНОВЫЕ ЗАДАЧИ (НАПОМИНАНИЯ)
-# ========================================
-
-async def send_reminders():
-    """Фоновая задача отправки напоминаний"""
-    logging.info("Reminders task started!")
-    
-    while True:
-        try:
-            current_hour = datetime.utcnow().hour
-            
-            # Утренние напоминания (9:00 МСК = 6:00 UTC)
-            if current_hour == MORNING_HOUR:
-                for day in [1, 2, 3]:
-                    users = get_users_for_reminders(day, 'morning')
-                    
-                    for user in users:
-                        user_id = user['user_id']
-                        
-                        try:
-                            if day == 1:
-                                text = (
-                                    "☀️ <b>Доброе утро!</b>\n\n"
-                                    "🎯 Сегодня <b>День 1</b> челленджа!\n\n"
-                                    "Переходите в канал и начинайте:\n"
-                                    "• Посмотрите видео\n"
-                                    "• Сделайте задание 1\n\n"
-                                    "Это займёт всего 15-20 минут!\n\n"
-                                    "💪 Вы справитесь!"
-                                )
-                            elif day == 2:
-                                text = (
-                                    "☀️ <b>Доброе утро!</b>\n\n"
-                                    "🎯 Сегодня <b>День 2</b>!\n\n"
-                                    "Отличный старт вчера! 💪\n\n"
-                                    "Сегодня:\n"
-                                    "• Изучите материалы\n"
-                                    "• Выполните практику\n\n"
-                                    "Продолжаем в том же духе!"
-                                )
-                            else:  # day 3
-                                text = (
-                                    "☀️ <b>Доброе утро!</b>\n\n"
-                                    "🎯 <b>ФИНАЛЬНЫЙ ДЕНЬ!</b>\n\n"
-                                    "Вы уже так много сделали! 🏆\n\n"
-                                    "Сегодня:\n"
-                                    "• Финальное задание\n"
-                                    "• Подведение итогов\n\n"
-                                    "Последний рывок - и вы победитель! 💪"
-                                )
-                            
-                            await bot.send_message(user_id, text, parse_mode="HTML")
-                            mark_reminder_sent(user_id, day, 'morning')
-                            logging.info(f"Sent morning reminder day {day} to {user_id}")
-                            
-                            await asyncio.sleep(0.1)
-                        
-                        except TelegramForbiddenError:
-                            mark_user_blocked(user_id, blocked=True)
-                            logging.info(f"User {user_id} blocked the bot")
-                        
-                        except TelegramBadRequest as e:
-                            logging.error(f"Bad request to {user_id}: {e}")
-                        
-                        except Exception as e:
-                            logging.error(f"Error sending morning reminder to {user_id}: {e}")
-            
-            # Вечерние напоминания (20:00 МСК = 17:00 UTC)
-            if current_hour == EVENING_HOUR:
-                for day in [1, 2, 3]:
-                    users = get_users_for_reminders(day, 'evening')
-                    
-                    for user in users:
-                        user_id = user['user_id']
-                        
-                        try:
-                            # Проверяем прошёл ли день
-                            if day == 1 and user['day1_completed']:
-                                continue
-                            if day == 2 and user['day2_completed']:
-                                continue
-                            if day == 3 and user['day3_completed']:
-                                continue
-                            
-                            text = (
-                                "🌙 <b>Добрый вечер!</b>\n\n"
-                                f"Как прошёл День {day}?\n\n"
-                                f"Если вы завершили все задания - отметьте это! 👇"
-                            )
-                            
-                            await bot.send_message(
-                                user_id,
-                                text,
-                                reply_markup=get_day_completed_keyboard(day),
-                                parse_mode="HTML"
-                            )
-                            mark_reminder_sent(user_id, day, 'evening')
-                            logging.info(f"Sent evening reminder day {day} to {user_id}")
-                            
-                            await asyncio.sleep(0.1)
-                        
-                        except TelegramForbiddenError:
-                            mark_user_blocked(user_id, blocked=True)
-                            logging.info(f"User {user_id} blocked the bot")
-                        
-                        except TelegramBadRequest as e:
-                            logging.error(f"Bad request to {user_id}: {e}")
-                        
-                        except Exception as e:
-                            logging.error(f"Error sending evening reminder to {user_id}: {e}")
-            
-            # Проверяем каждые 30 минут
-            await asyncio.sleep(1800)
-        
-        except Exception as e:
-            logging.error(f"Error in reminders task: {e}")
-            await asyncio.sleep(1800)
 
 # ========================================
 # АДМИН КОМАНДЫ
@@ -1052,14 +1292,29 @@ async def admin_stats(message: types.Message):
     conn = get_db_connection()
     cur = conn.cursor()
     
+    # Общая статистика
     cur.execute('SELECT COUNT(*) as count FROM users')
     total_users = cur.fetchone()['count']
     
-    cur.execute('SELECT COUNT(*) as count FROM users WHERE day3_completed = TRUE')
-    completed = cur.fetchone()['count']
+    # Статистика челленджа
+    cur.execute('SELECT COUNT(*) as count FROM challenge_progress')
+    challenge_started = cur.fetchone()['count']
     
+    cur.execute('SELECT COUNT(*) as count FROM challenge_progress WHERE day1_completed = TRUE')
+    day1_completed = cur.fetchone()['count']
+    
+    cur.execute('SELECT COUNT(*) as count FROM challenge_progress WHERE day2_completed = TRUE')
+    day2_completed = cur.fetchone()['count']
+    
+    cur.execute('SELECT COUNT(*) as count FROM challenge_progress WHERE day3_completed = TRUE')
+    day3_completed = cur.fetchone()['count']
+    
+    cur.execute('SELECT COUNT(*) as count FROM challenge_progress WHERE purchased = TRUE')
+    challenge_purchased = cur.fetchone()['count']
+    
+    # Оплаты
     cur.execute('SELECT COUNT(*) as count FROM users WHERE subscription_until > NOW()')
-    paid = cur.fetchone()['count']
+    paid_users = cur.fetchone()['count']
     
     cur.execute('SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = %s', ('completed',))
     revenue = cur.fetchone()['total']
@@ -1067,12 +1322,30 @@ async def admin_stats(message: types.Message):
     cur.close()
     conn.close()
     
+    # Конверсии
+    if challenge_started > 0:
+        conv_day1 = (day1_completed / challenge_started * 100)
+        conv_day2 = (day2_completed / challenge_started * 100)
+        conv_day3 = (day3_completed / challenge_started * 100)
+    else:
+        conv_day1 = conv_day2 = conv_day3 = 0
+    
+    if day3_completed > 0:
+        conv_purchase = (challenge_purchased / day3_completed * 100)
+    else:
+        conv_purchase = 0
+    
     text = (
         "📊 <b>Статистика бота</b>\n\n"
-        f"👥 Всего пользователей: {total_users}\n"
-        f"🏆 Прошли челлендж: {completed}\n"
-        f"💎 Купили полный курс: {paid}\n"
-        f"💰 Общий доход: {revenue}₽\n"
+        f"👥 Всего пользователей: {total_users}\n\n"
+        "<b>Челлендж:</b>\n"
+        f"🚀 Начали: {challenge_started}\n"
+        f"✅ День 1: {day1_completed} ({conv_day1:.1f}%)\n"
+        f"✅ День 2: {day2_completed} ({conv_day2:.1f}%)\n"
+        f"✅ День 3: {day3_completed} ({conv_day3:.1f}%)\n"
+        f"💳 Купили: {challenge_purchased} ({conv_purchase:.1f}% от завершивших)\n\n"
+        f"💎 Всего оплатили: {paid_users}\n"
+        f"💰 Общий доход: {revenue:.0f}₽"
     )
     
     await message.answer(text, parse_mode="HTML")
@@ -1085,9 +1358,6 @@ async def main():
     """Главная функция"""
     init_db()
     logging.info("Bot started successfully!")
-    
-    # Запускаем фоновые задачи
-    asyncio.create_task(send_reminders())
     
     # Polling
     while True:
