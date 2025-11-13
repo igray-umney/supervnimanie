@@ -834,8 +834,8 @@ async def change_category_from_failed(callback: types.CallbackQuery):
     
     # Отправляем материалы
     if materials:
-    for material in materials:
-        try:
+        for material in materials:
+            try:
             # Экранируем HTML символы
             title = escape_html(material['title'])
             description = escape_html(material.get('description'))
