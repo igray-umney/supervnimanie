@@ -231,14 +231,12 @@ def mark_user_blocked(user_id, blocked=True):
 
 def determine_age_category(age):
     """Определить категорию по возрасту"""
-    if age in [3, 4, 5]:
+    if age <= 4:  # 3, 4 года
         return '3-5'
-    elif age in [4, 5, 6]:
+    elif age <= 6:  # 5, 6 лет
         return '4-6'
-    elif age in [5, 6, 7]:
+    else:  # 7+ лет
         return '5-7'
-    else:
-        return '3-5'  # По умолчанию
 
 def start_challenge(user_id, age):
     """Начать челлендж для пользователя"""
@@ -794,21 +792,49 @@ async def keep_category(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "day1_failed")
 async def day1_failed(callback: types.CallbackQuery):
     """День 1 не получился"""
+    user_id = callback.from_user.id
+    progress = get_challenge_progress(user_id)
+    
+    if not progress:
+        await callback.answer("Ошибка! Начните с /start", show_alert=True)
+        return
+    
+    current_category = progress['age_category']
+    
+    # Предлагаем смену категории
+    keyboard_buttons = [
+        [InlineKeyboardButton(text="🔄 Попробую еще раз", callback_data="start_day1")]
+    ]
+    
+    # Добавляем кнопку "Сделать легче" если не минимальная сложность
+    if current_category == '5-7':
+        keyboard_buttons.append([InlineKeyboardButton(text="⬇️ Сделать легче (4-6 лет)", callback_data="change_cat_4-6")])
+    elif current_category == '4-6':
+        keyboard_buttons.append([InlineKeyboardButton(text="⬇️ Сделать легче (3-5 лет)", callback_data="change_cat_3-5")])
+    
+    # Добавляем кнопку "Сделать сложнее" если не максимальная сложность
+    if current_category == '3-5':
+        keyboard_buttons.append([InlineKeyboardButton(text="⬆️ Сделать сложнее (4-6 лет)", callback_data="change_cat_4-6")])
+    elif current_category == '4-6':
+        keyboard_buttons.append([InlineKeyboardButton(text="⬆️ Сделать сложнее (5-7 лет)", callback_data="change_cat_5-7")])
+    
+    keyboard_buttons.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="back")])
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
     await callback.message.edit_text(
         "Не расстраивайтесь! Бывает. 😊\n\n"
         "Что помешало?\n"
         "• Нет времени?\n"
         "• Ребенок не захотел?\n"
         "• Задание показалось сложным?\n\n"
-        "Попробуйте сегодня вечером или завтра утром!\n\n"
-        "Главное - не сдавайтесь! 💪",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔄 Попробую еще раз", callback_data="start_day1")],
-            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back")]
-        ])
+        "Выберите действие:",
+        reply_markup=keyboard
     )
     
     await callback.answer()
+
+
     
 # ========================================
 # СТАРЫЕ ФУНКЦИИ (сохраняем для совместимости)
