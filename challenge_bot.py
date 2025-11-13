@@ -754,26 +754,6 @@ async def day1_difficulty_selected(callback: types.CallbackQuery):
     
     await callback.answer()
 
-@dp.callback_query(F.data.startswith("change_cat_"))
-async def change_category(callback: types.CallbackQuery):
-    """Смена категории"""
-    user_id = callback.from_user.id
-    new_category = callback.data.replace("change_cat_", "")
-    
-    # Обновляем категорию
-    change_age_category(user_id, new_category)
-    
-    await callback.message.edit_text(
-        f"Отлично! Перевёл вас в категорию {new_category} лет. ✅\n\n"
-        "🎉 <b>День 1 пройден!</b>\n\n"
-        "📅 <b>Завтра:</b> День 2 с новыми заданиями под новый уровень!\n\n"
-        "Я напомню вам утром. Отдохните! 😊",
-        parse_mode="HTML",
-        reply_markup=get_main_menu()
-    )
-    
-    await callback.answer()
-
 @dp.callback_query(F.data == "keep_category")
 async def keep_category(callback: types.CallbackQuery):
     """Оставить текущую категорию"""
