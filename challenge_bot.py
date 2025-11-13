@@ -768,6 +768,12 @@ async def keep_category(callback: types.CallbackQuery):
     
     await callback.answer()
 
+def escape_html(text):
+    """Экранировать HTML символы"""
+    if not text:
+        return text
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
 @dp.callback_query(F.data.startswith("change_cat_"))
 async def change_category_from_failed(callback: types.CallbackQuery):
     """Смена категории после 'Не получилось' с отправкой заданий"""
@@ -828,11 +834,15 @@ async def change_category_from_failed(callback: types.CallbackQuery):
     
     # Отправляем материалы
     if materials:
-        for material in materials:
-            try:
-                caption = f"📄 <b>{material['title']}</b>"
-                if material.get('description'):
-                    caption += f"\n\n{material['description']}"
+    for material in materials:
+        try:
+            # Экранируем HTML символы
+            title = escape_html(material['title'])
+            description = escape_html(material.get('description'))
+            
+            caption = f"📄 <b>{title}</b>"
+            if description:
+                caption += f"\n\n{description}"
                 
                 if material['file_type'] == 'photo':
                     await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
