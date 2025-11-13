@@ -832,11 +832,11 @@ async def change_category_from_failed(callback: types.CallbackQuery):
     
     await bot.send_message(user_id, text, parse_mode="HTML")
     
-# Отправляем материалы
-if materials:
+    # Отправляем материалы
+    if materials:
     for material in materials:
         try:
-            # Экранируем HTML символы  ← ДОБАВЬ 4 ПРОБЕЛА!
+            # Экранируем HTML символы
             title = escape_html(material['title'])
             description = escape_html(material.get('description'))
             
