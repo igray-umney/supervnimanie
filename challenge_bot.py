@@ -844,7 +844,7 @@ async def change_category_from_failed(callback: types.CallbackQuery):
             if description:
                 caption += f"\n\n{description}"
             
-            if material['file_type'] == 'photo':  ← НА ОДНОМ УРОВНЕ с if description!
+            if material['file_type'] == 'photo': 
                 await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
             elif material['file_type'] == 'document':
                 await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
