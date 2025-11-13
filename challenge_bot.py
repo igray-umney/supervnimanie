@@ -788,6 +788,90 @@ async def keep_category(callback: types.CallbackQuery):
     
     await callback.answer()
 
+@dp.callback_query(F.data.startswith("change_cat_"))
+async def change_category_from_failed(callback: types.CallbackQuery):
+    """Смена категории после 'Не получилось' с отправкой заданий"""
+    user_id = callback.from_user.id
+    new_category = callback.data.replace("change_cat_", "")
+    
+    # Обновляем категорию
+    change_age_category(user_id, new_category)
+    
+    # Получаем обновленный прогресс
+    progress = get_challenge_progress(user_id)
+    
+    await callback.message.edit_text(
+        f"✅ Перевёл в категорию {new_category} лет!\n\n"
+        "Сейчас отправлю новые задания...",
+        parse_mode="HTML"
+    )
+    
+    # Получаем материалы для новой категории
+    materials = get_challenge_materials(new_category, 1)
+    
+    # Формируем список вариантов
+    if new_category == '3-5':
+        variants_text = (
+            "🟢 Вариант 1: «Найди отличия»\n"
+            "🟢 Вариант 2: «Лабиринт»\n"
+            "🟢 Вариант 3: «Найди пару»"
+        )
+    elif new_category == '4-6':
+        variants_text = (
+            "🟢 Вариант 1: «Найди спрятанные объекты»\n"
+            "🟢 Вариант 2: «Дорисуй половинку»\n"
+            "🟢 Вариант 3: «Сортировка по категориям»\n"
+            "🟢 Вариант 4: «Лабиринт»"
+        )
+    else:  # 5-7
+        variants_text = (
+            "🟢 Вариант 1: «Соедини точки по числам (1-20)»\n"
+            "🟢 Вариант 2: «Раскраски с категориями»\n"
+            "🟢 Вариант 3: «Задания на классификацию»"
+        )
+    
+    text = (
+        "🎯 <b>ДЕНЬ 1: Тестирование</b>\n\n"
+        "Предложите ребенку на выбор — пусть сам решит, что ему интереснее:\n\n"
+        f"{variants_text}\n\n"
+        "Ребенок может выбрать один вариант или попробовать все, если ему понравится!\n\n"
+        "⏱ <b>ВАЖНО:</b> Засеките время - сколько долго ребенок будет вовлечен в процесс.\n\n"
+    )
+    
+    # Если есть материалы - отправляем
+    if materials:
+        text += "📎 Сейчас отправлю вам все материалы...\n\n"
+    else:
+        text += "⚠️ <i>Материалы для этого дня еще загружаются. Пока вы можете использовать свои задания.</i>\n\n"
+    
+    await bot.send_message(user_id, text, parse_mode="HTML")
+    
+    # Отправляем материалы
+    if materials:
+        for material in materials:
+            try:
+                caption = f"📄 <b>{material['title']}</b>"
+                if material.get('description'):
+                    caption += f"\n\n{material['description']}"
+                
+                if material['file_type'] == 'photo':
+                    await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                elif material['file_type'] == 'document':
+                    await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error sending material: {e}")
+    
+    # Отправляем кнопки завершения
+    await bot.send_message(
+        user_id,
+        "Выполнили задание?",
+        reply_markup=get_day_completed_keyboard_new(1)
+    )
+    
+    await callback.answer()
+
 @dp.callback_query(F.data == "day1_failed")
 async def day1_failed(callback: types.CallbackQuery):
     """День 1 не получился"""
@@ -1093,11 +1177,18 @@ async def my_progress(callback: types.CallbackQuery):
     else:
         text += "💪 Продолжайте в том же духе!"
     
+        # Добавляем кнопку "Назад"
+keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="◀️ Назад", callback_data="back")],
+    [InlineKeyboardButton(text="💎 Полный курс", callback_data="show_tariffs")],
+    [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
+])
+
     await callback.message.edit_text(
-        text,
-        reply_markup=get_main_menu(),
-        parse_mode="HTML"
-    )
+    text,
+    reply_markup=keyboard,
+    parse_mode="HTML"
+)
     
     await callback.answer()
 
