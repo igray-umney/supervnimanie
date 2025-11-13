@@ -1176,9 +1176,8 @@ async def my_progress(callback: types.CallbackQuery):
         text += "Готовы продолжить с полным курсом?"
     else:
         text += "💪 Продолжайте в том же духе!"
-    
-        # Добавляем кнопку "Назад"
-keyboard = InlineKeyboardMarkup(inline_keyboard=[
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="◀️ Назад", callback_data="back")],
     [InlineKeyboardButton(text="💎 Полный курс", callback_data="show_tariffs")],
     [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
