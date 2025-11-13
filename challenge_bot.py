@@ -85,6 +85,14 @@ class ChallengeStates(StatesGroup):
     DAY3_ASK_TIME = State()
     DAY3_SHOW_RESULTS = State()
 
+class UploadMaterialStates(StatesGroup):
+    CHOOSING_CATEGORY = State()
+    CHOOSING_DAY = State()
+    CHOOSING_VARIANT = State()
+    ENTERING_TITLE = State()
+    ENTERING_DESCRIPTION = State()
+    UPLOADING_FILE = State()
+
 # ========================================
 # БАЗА ДАННЫХ PostgreSQL
 # ========================================
@@ -330,6 +338,39 @@ def is_challenge_participant(user_id):
         return True
     return False
 
+def save_material(age_category, day, variant, title, description, file_id, file_type):
+    """Сохранить материал в БД"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Проверяем существует ли уже такой материал
+    cur.execute('''SELECT id FROM challenge_materials 
+                   WHERE age_category = %s AND day = %s AND variant = %s''',
+                (age_category, day, variant))
+    
+    existing = cur.fetchone()
+    
+    if existing:
+        # Обновляем существующий
+        cur.execute('''UPDATE challenge_materials 
+                       SET title = %s, description = %s, file_id = %s, file_type = %s
+                       WHERE age_category = %s AND day = %s AND variant = %s''',
+                    (title, description, file_id, file_type, age_category, day, variant))
+        result = "updated"
+    else:
+        # Создаём новый
+        cur.execute('''INSERT INTO challenge_materials 
+                       (age_category, day, variant, title, description, file_id, file_type)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)''',
+                    (age_category, day, variant, title, description, file_id, file_type))
+        result = "created"
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    return result
+
 # ========================================
 # КЛАВИАТУРЫ ДЛЯ ЧЕЛЛЕНДЖА
 # ========================================
@@ -381,6 +422,39 @@ def get_category_change_keyboard(new_category):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да, перейти", callback_data=f"change_cat_{new_category}")],
         [InlineKeyboardButton(text="Нет, оставить текущий", callback_data="keep_category")]
+    ])
+    return keyboard
+
+def get_category_keyboard():
+    """Клавиатура выбора категории"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="3-5 лет", callback_data="upload_cat_3-5")],
+        [InlineKeyboardButton(text="4-6 лет", callback_data="upload_cat_4-6")],
+        [InlineKeyboardButton(text="5-7 лет", callback_data="upload_cat_5-7")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="upload_cancel")]
+    ])
+    return keyboard
+
+
+def get_day_keyboard():
+    """Клавиатура выбора дня"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="День 1", callback_data="upload_day_1")],
+        [InlineKeyboardButton(text="День 2", callback_data="upload_day_2")],
+        [InlineKeyboardButton(text="День 3", callback_data="upload_day_3")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="upload_cancel")]
+    ])
+    return keyboard
+
+
+def get_variant_keyboard():
+    """Клавиатура выбора варианта"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Вариант 1", callback_data="upload_var_1")],
+        [InlineKeyboardButton(text="Вариант 2", callback_data="upload_var_2")],
+        [InlineKeyboardButton(text="Вариант 3", callback_data="upload_var_3")],
+        [InlineKeyboardButton(text="Вариант 4", callback_data="upload_var_4")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="upload_cancel")]
     ])
     return keyboard
 
@@ -735,7 +809,7 @@ async def day1_failed(callback: types.CallbackQuery):
     )
     
     await callback.answer()
-
+    
 # ========================================
 # СТАРЫЕ ФУНКЦИИ (сохраняем для совместимости)
 # ========================================
@@ -1349,6 +1423,363 @@ async def admin_stats(message: types.Message):
     )
     
     await message.answer(text, parse_mode="HTML")
+
+@dp.message(Command("upload_material"))
+async def cmd_upload_material(message: types.Message, state: FSMContext):
+    """Команда для загрузки материалов (только для админа)"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔️ Эта команда доступна только администратору.")
+        return
+    
+    await message.answer(
+        "📤 <b>Загрузка материалов челленджа</b>\n\n"
+        "Выберите категорию возраста:",
+        reply_markup=get_category_keyboard(),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(UploadMaterialStates.CHOOSING_CATEGORY)
+
+
+@dp.callback_query(F.data.startswith("upload_cat_"), StateFilter(UploadMaterialStates.CHOOSING_CATEGORY))
+async def upload_category_selected(callback: types.CallbackQuery, state: FSMContext):
+    """Выбрана категория"""
+    category = callback.data.replace("upload_cat_", "")
+    
+    await state.update_data(category=category)
+    
+    await callback.message.edit_text(
+        f"✅ Категория: <b>{category} лет</b>\n\n"
+        "Теперь выберите день:",
+        reply_markup=get_day_keyboard(),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(UploadMaterialStates.CHOOSING_DAY)
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("upload_day_"), StateFilter(UploadMaterialStates.CHOOSING_DAY))
+async def upload_day_selected(callback: types.CallbackQuery, state: FSMContext):
+    """Выбран день"""
+    day = int(callback.data.replace("upload_day_", ""))
+    
+    await state.update_data(day=day)
+    
+    data = await state.get_data()
+    category = data.get('category')
+    
+    await callback.message.edit_text(
+        f"✅ Категория: <b>{category} лет</b>\n"
+        f"✅ День: <b>{day}</b>\n\n"
+        "Теперь выберите номер варианта:",
+        reply_markup=get_variant_keyboard(),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(UploadMaterialStates.CHOOSING_VARIANT)
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("upload_var_"), StateFilter(UploadMaterialStates.CHOOSING_VARIANT))
+async def upload_variant_selected(callback: types.CallbackQuery, state: FSMContext):
+    """Выбран вариант"""
+    variant = int(callback.data.replace("upload_var_", ""))
+    
+    await state.update_data(variant=variant)
+    
+    data = await state.get_data()
+    category = data.get('category')
+    day = data.get('day')
+    
+    await callback.message.edit_text(
+        f"✅ Категория: <b>{category} лет</b>\n"
+        f"✅ День: <b>{day}</b>\n"
+        f"✅ Вариант: <b>{variant}</b>\n\n"
+        "Теперь введите <b>название задания</b>:\n"
+        "Например: <i>Найди отличия</i>",
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(UploadMaterialStates.ENTERING_TITLE)
+    await callback.answer()
+
+
+@dp.message(StateFilter(UploadMaterialStates.ENTERING_TITLE))
+async def upload_title_entered(message: types.Message, state: FSMContext):
+    """Введено название"""
+    title = message.text.strip()
+    
+    if len(title) > 200:
+        await message.answer("❌ Название слишком длинное! Максимум 200 символов.")
+        return
+    
+    await state.update_data(title=title)
+    
+    data = await state.get_data()
+    category = data.get('category')
+    day = data.get('day')
+    variant = data.get('variant')
+    
+    await message.answer(
+        f"✅ Категория: <b>{category} лет</b>\n"
+        f"✅ День: <b>{day}</b>\n"
+        f"✅ Вариант: <b>{variant}</b>\n"
+        f"✅ Название: <b>{title}</b>\n\n"
+        "Теперь введите <b>описание</b> (необязательно):\n"
+        "Или напишите <code>пропустить</code> чтобы пропустить.\n\n"
+        "Например: <i>Найди 5 отличий между картинками</i>",
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(UploadMaterialStates.ENTERING_DESCRIPTION)
+
+
+@dp.message(StateFilter(UploadMaterialStates.ENTERING_DESCRIPTION))
+async def upload_description_entered(message: types.Message, state: FSMContext):
+    """Введено описание"""
+    description = message.text.strip()
+    
+    if description.lower() in ['пропустить', 'skip', '-']:
+        description = None
+    elif len(description) > 500:
+        await message.answer("❌ Описание слишком длинное! Максимум 500 символов.")
+        return
+    
+    await state.update_data(description=description)
+    
+    data = await state.get_data()
+    category = data.get('category')
+    day = data.get('day')
+    variant = data.get('variant')
+    title = data.get('title')
+    
+    await message.answer(
+        f"✅ Категория: <b>{category} лет</b>\n"
+        f"✅ День: <b>{day}</b>\n"
+        f"✅ Вариант: <b>{variant}</b>\n"
+        f"✅ Название: <b>{title}</b>\n"
+        f"✅ Описание: <b>{description or 'без описания'}</b>\n\n"
+        "📎 Теперь отправьте <b>файл</b> (фото или PDF):",
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(UploadMaterialStates.UPLOADING_FILE)
+
+
+@dp.message(StateFilter(UploadMaterialStates.UPLOADING_FILE), F.photo)
+async def upload_photo_received(message: types.Message, state: FSMContext):
+    """Получено фото"""
+    # Берём фото наибольшего размера
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    file_type = 'photo'
+    
+    data = await state.get_data()
+    category = data.get('category')
+    day = data.get('day')
+    variant = data.get('variant')
+    title = data.get('title')
+    description = data.get('description')
+    
+    # Сохраняем в БД
+    result = save_material(category, day, variant, title, description, file_id, file_type)
+    
+    action = "обновлён" if result == "updated" else "создан"
+    
+    await message.answer(
+        f"✅ <b>Материал {action}!</b>\n\n"
+        f"📋 Детали:\n"
+        f"• Категория: {category} лет\n"
+        f"• День: {day}\n"
+        f"• Вариант: {variant}\n"
+        f"• Название: {title}\n"
+        f"• Описание: {description or 'нет'}\n"
+        f"• Тип: Фото\n"
+        f"• File ID: <code>{file_id}</code>\n\n"
+        "Загрузить ещё материал?\n"
+        "Используй /upload_material",
+        parse_mode="HTML"
+    )
+    
+    await state.clear()
+
+
+@dp.message(StateFilter(UploadMaterialStates.UPLOADING_FILE), F.document)
+async def upload_document_received(message: types.Message, state: FSMContext):
+    """Получен документ (PDF)"""
+    document = message.document
+    file_id = document.file_id
+    file_type = 'document'
+    
+    data = await state.get_data()
+    category = data.get('category')
+    day = data.get('day')
+    variant = data.get('variant')
+    title = data.get('title')
+    description = data.get('description')
+    
+    # Сохраняем в БД
+    result = save_material(category, day, variant, title, description, file_id, file_type)
+    
+    action = "обновлён" if result == "updated" else "создан"
+    
+    await message.answer(
+        f"✅ <b>Материал {action}!</b>\n\n"
+        f"📋 Детали:\n"
+        f"• Категория: {category} лет\n"
+        f"• День: {day}\n"
+        f"• Вариант: {variant}\n"
+        f"• Название: {title}\n"
+        f"• Описание: {description or 'нет'}\n"
+        f"• Тип: Документ (PDF)\n"
+        f"• Имя файла: {document.file_name}\n"
+        f"• File ID: <code>{file_id}</code>\n\n"
+        "Загрузить ещё материал?\n"
+        "Используй /upload_material",
+        parse_mode="HTML"
+    )
+    
+    await state.clear()
+
+
+@dp.message(StateFilter(UploadMaterialStates.UPLOADING_FILE))
+async def upload_wrong_file_type(message: types.Message, state: FSMContext):
+    """Неправильный тип файла"""
+    await message.answer(
+        "❌ Пожалуйста, отправьте <b>фото</b> или <b>PDF документ</b>!\n\n"
+        "Или напишите /cancel чтобы отменить.",
+        parse_mode="HTML"
+    )
+
+
+@dp.callback_query(F.data == "upload_cancel")
+async def upload_cancel(callback: types.CallbackQuery, state: FSMContext):
+    """Отмена загрузки"""
+    await callback.message.edit_text("❌ Загрузка отменена.")
+    await state.clear()
+    await callback.answer()
+
+
+@dp.message(Command("cancel"), StateFilter("*"))
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    """Отмена любого процесса"""
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer("Нечего отменять.")
+        return
+    
+    await state.clear()
+    await message.answer("❌ Действие отменено.")
+
+
+# ====== КОМАНДА ДЛЯ ПРОСМОТРА МАТЕРИАЛОВ ======
+
+@dp.message(Command("list_materials"))
+async def cmd_list_materials(message: types.Message):
+    """Показать список всех материалов (только для админа)"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔️ Эта команда доступна только администратору.")
+        return
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute('''SELECT age_category, day, variant, title, file_type
+                   FROM challenge_materials
+                   ORDER BY age_category, day, variant''')
+    
+    materials = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    if not materials:
+        await message.answer("📭 Материалов пока нет.")
+        return
+    
+    # Группируем по категориям
+    text = "📚 <b>Загруженные материалы:</b>\n\n"
+    
+    current_category = None
+    current_day = None
+    
+    for mat in materials:
+        category = mat['age_category']
+        day = mat['day']
+        variant = mat['variant']
+        title = mat['title']
+        file_type = mat['file_type']
+        
+        if category != current_category:
+            text += f"\n<b>📂 Категория {category} лет:</b>\n"
+            current_category = category
+            current_day = None
+        
+        if day != current_day:
+            text += f"\n  <b>📅 День {day}:</b>\n"
+            current_day = day
+        
+        icon = "🖼" if file_type == 'photo' else "📄"
+        text += f"    {icon} Вариант {variant}: {title}\n"
+    
+    text += f"\n<b>Всего:</b> {len(materials)} материалов"
+    
+    await message.answer(text, parse_mode="HTML")
+
+
+# ====== КОМАНДА ДЛЯ УДАЛЕНИЯ МАТЕРИАЛА ======
+
+@dp.message(Command("delete_material"))
+async def cmd_delete_material(message: types.Message):
+    """Удалить материал (только для админа)"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔️ Эта команда доступна только администратору.")
+        return
+    
+    # Парсим аргументы: /delete_material 3-5 1 1
+    parts = message.text.split()
+    
+    if len(parts) != 4:
+        await message.answer(
+            "❌ Неверный формат!\n\n"
+            "Используй: <code>/delete_material категория день вариант</code>\n\n"
+            "Например: <code>/delete_material 3-5 1 1</code>",
+            parse_mode="HTML"
+        )
+        return
+    
+    try:
+        category = parts[1]
+        day = int(parts[2])
+        variant = int(parts[3])
+    except ValueError:
+        await message.answer("❌ Неверный формат! День и вариант должны быть числами.")
+        return
+    
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute('''DELETE FROM challenge_materials 
+                   WHERE age_category = %s AND day = %s AND variant = %s
+                   RETURNING title''',
+                (category, day, variant))
+    
+    deleted = cur.fetchone()
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    
+    if deleted:
+        await message.answer(
+            f"✅ Материал удалён!\n\n"
+            f"• Категория: {category} лет\n"
+            f"• День: {day}\n"
+            f"• Вариант: {variant}\n"
+            f"• Название: {deleted['title']}"
+        )
+    else:
+        await message.answer("❌ Материал не найден!")
 
 # ========================================
 # ЗАПУСК БОТА
