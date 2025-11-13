@@ -832,26 +832,26 @@ async def change_category_from_failed(callback: types.CallbackQuery):
     
     await bot.send_message(user_id, text, parse_mode="HTML")
     
-# Отправляем материалы
-if materials:
-    for material in materials:
-        try:
-            # Экранируем HTML символы
-            title = escape_html(material['title'])
-            description = escape_html(material.get('description'))
-            
-            caption = f"📄 <b>{title}</b>"
-            if description:
-                caption += f"\n\n{description}"
-            
-            if material['file_type'] == 'photo': 
-                await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
-            elif material['file_type'] == 'document':
-                await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
-            
-            await asyncio.sleep(0.5)
-        except Exception as e:
-            logging.error(f"Error sending material: {e}")
+    # Отправляем материалы
+    if materials:  ← ДОБАВЬ ОТСТУП!
+        for material in materials:
+            try:
+                # Экранируем HTML символы
+                title = escape_html(material['title'])
+                description = escape_html(material.get('description'))
+                
+                caption = f"📄 <b>{title}</b>"
+                if description:
+                    caption += f"\n\n{description}"
+                
+                if material['file_type'] == 'photo':
+                    await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                elif material['file_type'] == 'document':
+                    await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error sending material: {e}")
     
     # Отправляем кнопки завершения
     await bot.send_message(
