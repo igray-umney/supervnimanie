@@ -833,7 +833,7 @@ async def change_category_from_failed(callback: types.CallbackQuery):
     await bot.send_message(user_id, text, parse_mode="HTML")
     
     # Отправляем материалы
-    if materials:  ← ДОБАВЬ ОТСТУП!
+    if materials:
         for material in materials:
             try:
                 # Экранируем HTML символы
