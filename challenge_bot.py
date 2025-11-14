@@ -1,3 +1,6 @@
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 import os
 import logging
 from datetime import datetime, timedelta
@@ -774,6 +777,67 @@ def escape_html(text):
         return text
     return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
+async def send_day2_reminders():
+    """Отправка напоминаний о Дне 2"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Находим пользователей, которые завершили День 1 вчера
+    cur.execute('''
+        SELECT user_id, age_category 
+        FROM challenge_progress 
+        WHERE day1_completed = TRUE 
+        AND day2_completed = FALSE
+        AND day2_reminder_sent = FALSE
+        AND day1_completed_at < NOW() - INTERVAL '1 day'
+        AND is_active = TRUE
+    ''')
+    
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    for user in users:
+        try:
+            user_id = user['user_id']
+            category = user['age_category']
+            
+            # Получаем материалы
+            materials = get_challenge_materials(category, 2)
+            
+            text = (
+                "☀️ <b>Доброе утро!</b>\n\n"
+                "🎯 <b>ДЕНЬ 2: Развитие концентрации</b>\n\n"
+                "Вчера отлично! Сегодня продолжим! 💪\n\n"
+                "Готовы к новым заданиям?"
+            )
+            
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Начать День 2!", callback_data="start_day2")]
+                ]),
+                parse_mode="HTML"
+            )
+            
+            # Отмечаем что напоминание отправлено
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''UPDATE challenge_progress 
+                          SET day2_reminder_sent = TRUE 
+                          WHERE user_id = %s''', (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+        except TelegramForbiddenError:
+            mark_user_blocked(user_id, True)
+        except Exception as e:
+            logging.error(f"Error sending Day 2 reminder to {user_id}: {e}")
+        
+        await asyncio.sleep(0.5)
+
 @dp.callback_query(F.data.startswith("change_cat_"))
 async def change_category_from_failed(callback: types.CallbackQuery):
     """Смена категории после 'Не получилось' с отправкой заданий"""
@@ -907,7 +971,57 @@ async def day1_failed(callback: types.CallbackQuery):
     
     await callback.answer()
 
-
+@dp.callback_query(F.data == "start_day2")
+async def start_day2(callback: types.CallbackQuery):
+    """Начало Дня 2"""
+    user_id = callback.from_user.id
+    progress = get_challenge_progress(user_id)
+    
+    if not progress:
+        await callback.answer("Ошибка! Начните с /start", show_alert=True)
+        return
+    
+    category = progress['age_category']
+    materials = get_challenge_materials(category, 2)
+    
+    text = (
+        "🎯 <b>ДЕНЬ 2: Развитие концентрации</b>\n\n"
+        "Сегодня усложняем задания!\n\n"
+        "⏱ Засеките время - сколько ребенок будет увлечен.\n\n"
+    )
+    
+    if materials:
+        text += "📎 Отправляю задания...\n\n"
+    
+    await callback.message.edit_text(text, parse_mode="HTML")
+    
+    # Отправляем материалы
+    if materials:
+        for material in materials:
+            try:
+                title = escape_html(material['title'])
+                description = escape_html(material.get('description'))
+                
+                caption = f"📄 <b>{title}</b>"
+                if description:
+                    caption += f"\n\n{description}"
+                
+                if material['file_type'] == 'photo':
+                    await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                elif material['file_type'] == 'document':
+                    await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error sending material: {e}")
+    
+    await bot.send_message(
+        user_id,
+        "Выполнили задание?",
+        reply_markup=get_day_completed_keyboard_new(2)
+    )
+    
+    await callback.answer()
     
 # ========================================
 # СТАРЫЕ ФУНКЦИИ (сохраняем для совместимости)
@@ -1893,6 +2007,19 @@ async def cmd_delete_material(message: types.Message):
 async def main():
     """Главная функция"""
     init_db()
+    
+    # Создаем планировщик
+    scheduler = AsyncIOScheduler()
+    
+    # Добавляем задачу на 9:00 МСК (6:00 UTC)
+    scheduler.add_job(
+        send_day2_reminders,
+        CronTrigger(hour=6, minute=0),
+        id='day2_reminders'
+    )
+    
+    scheduler.start()
+    logging.info("Scheduler started!")
     logging.info("Bot started successfully!")
     
     # Polling
