@@ -796,6 +796,8 @@ async def send_day2_reminders():
     users = cur.fetchall()
     cur.close()
     conn.close()
+
+    logging.info(f"Found {len(users)} users for Day 2 reminders")
     
     for user in users:
         try:
@@ -2013,7 +2015,7 @@ async def main():
     # Добавляем задачу на 9:00 МСК (6:00 UTC)
     scheduler.add_job(
         send_day2_reminders,
-        CronTrigger(hour=6, minute=0),
+        CronTrigger(minute=0),
         id='day2_reminders'
     )
     
