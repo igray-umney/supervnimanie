@@ -1138,58 +1138,6 @@ async def day2_failed(callback: types.CallbackQuery):
     
     await callback.answer()
 
-@dp.callback_query(F.data == "start_day2")
-async def start_day2(callback: types.CallbackQuery):
-    """Начало Дня 2"""
-    user_id = callback.from_user.id
-    progress = get_challenge_progress(user_id)
-    
-    if not progress:
-        await callback.answer("Ошибка! Начните с /start", show_alert=True)
-        return
-    
-    category = progress['age_category']
-    materials = get_challenge_materials(category, 2)
-    
-    text = (
-        "🎯 <b>ДЕНЬ 2: Развитие концентрации</b>\n\n"
-        "Сегодня усложняем задания!\n\n"
-        "⏱ Засеките время - сколько ребенок будет увлечен.\n\n"
-    )
-    
-    if materials:
-        text += "📎 Отправляю задания...\n\n"
-    
-    await callback.message.edit_text(text, parse_mode="HTML")
-    
-    # Отправляем материалы
-    if materials:
-        for material in materials:
-            try:
-                title = escape_html(material['title'])
-                description = escape_html(material.get('description'))
-                
-                caption = f"📄 <b>{title}</b>"
-                if description:
-                    caption += f"\n\n{description}"
-                
-                if material['file_type'] == 'photo':
-                    await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
-                elif material['file_type'] == 'document':
-                    await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
-                
-                await asyncio.sleep(0.5)
-            except Exception as e:
-                logging.error(f"Error sending material: {e}")
-    
-    await bot.send_message(
-        user_id,
-        "Выполнили задание?",
-        reply_markup=get_day_completed_keyboard_new(2)
-    )
-    
-    await callback.answer()
-
 # ========================================
 # ДЕНЬ 3 - ХЭНДЛЕРЫ
 # ========================================
