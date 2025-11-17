@@ -972,6 +972,113 @@ async def day1_failed(callback: types.CallbackQuery):
     
     await callback.answer()
 
+# ========================================
+# ДЕНЬ 2 - ХЭНДЛЕРЫ
+# ========================================
+
+@dp.callback_query(F.data == "start_day2")
+async def start_day2(callback: types.CallbackQuery):
+    """Начало Дня 2"""
+    user_id = callback.from_user.id
+    progress = get_challenge_progress(user_id)
+    
+    if not progress:
+        await callback.answer("Ошибка! Начните с /start", show_alert=True)
+        return
+    
+    category = progress['age_category']
+    materials = get_challenge_materials(category, 2)
+    
+    text = (
+        "🎯 <b>ДЕНЬ 2: Развитие концентрации</b>\n\n"
+        "Сегодня усложняем задания!\n\n"
+        "⏱ Засеките время - сколько ребенок будет увлечен.\n\n"
+    )
+    
+    if materials:
+        text += "📎 Отправляю задания...\n\n"
+    else:
+        text += "⚠️ <i>Материалы загружаются...</i>\n\n"
+    
+    await callback.message.edit_text(text, parse_mode="HTML")
+    
+    # Отправляем материалы
+    if materials:
+        for material in materials:
+            try:
+                title = escape_html(material['title'])
+                description = escape_html(material.get('description'))
+                
+                caption = f"📄 <b>{title}</b>"
+                if description:
+                    caption += f"\n\n{description}"
+                
+                if material['file_type'] == 'photo':
+                    await bot.send_photo(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                elif material['file_type'] == 'document':
+                    await bot.send_document(user_id, material['file_id'], caption=caption, parse_mode="HTML")
+                
+                await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.error(f"Error sending material: {e}")
+    
+    await bot.send_message(
+        user_id,
+        "Выполнили задание?",
+        reply_markup=get_day_completed_keyboard_new(2)
+    )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == "day2_done")
+async def day2_completed(callback: types.CallbackQuery):
+    """День 2 выполнен"""
+    await callback.message.edit_text(
+        "Отлично! 👏\n\n"
+        "Сколько времени ребенок был увлечен?",
+        reply_markup=get_time_keyboard(2)
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("time2_"))
+async def day2_time_selected(callback: types.CallbackQuery):
+    """Время Дня 2 выбрано"""
+    user_id = callback.from_user.id
+    time_value = callback.data.replace("time2_", "")
+    
+    # Сохраняем и завершаем День 2
+    update_challenge_day(user_id, 2, time_value)
+    
+    await callback.message.edit_text(
+        "🎉 <b>День 2 пройден!</b>\n\n"
+        "Отличная работа! Уже половина позади! 💪\n\n"
+        "📅 <b>Завтра:</b> День 3 - финальный рывок!\n\n"
+        "Я напомню завтра утром. Отдохните! 😊",
+        parse_mode="HTML",
+        reply_markup=get_main_menu()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data == "day2_failed")
+async def day2_failed(callback: types.CallbackQuery):
+    """День 2 не получился"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Попробую еще раз", callback_data="start_day2")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back")]
+    ])
+    
+    await callback.message.edit_text(
+        "Не расстраивайтесь! Бывает. 😊\n\n"
+        "Что помешало?\n"
+        "• Нет времени?\n"
+        "• Ребенок не захотел?\n"
+        "• Задание показалось сложным?\n\n"
+        "Выберите действие:",
+        reply_markup=keyboard
+    )
+    
+    await callback.answer()
+
 @dp.callback_query(F.data == "day2_failed")
 async def day2_failed(callback: types.CallbackQuery):
     """День 2 не получился"""
