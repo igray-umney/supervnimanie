@@ -840,6 +840,65 @@ async def send_day2_reminders():
         
         await asyncio.sleep(0.5)
 
+async def send_day3_reminders():
+    """Отправка напоминаний о Дне 3"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute('''
+        SELECT user_id, age_category 
+        FROM challenge_progress 
+        WHERE day2_completed = TRUE 
+        AND day3_completed = FALSE
+        AND day3_reminder_sent = FALSE
+        AND is_active = TRUE
+    ''')
+    
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    logging.info(f"Found {len(users)} users for Day 3 reminders")
+    
+    for user in users:
+        try:
+            user_id = user['user_id']
+            
+            text = (
+                "☀️ <b>Доброе утро!</b>\n\n"
+                "🎯 <b>ДЕНЬ 3: Финальный рывок!</b>\n\n"
+                "Сегодня последний день челленджа! 🏆\n\n"
+                "После этого вас ждёт специальное предложение! 💎\n\n"
+                "Готовы завершить челлендж?"
+            )
+            
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🚀 Начать День 3!", callback_data="start_day3")]
+                ]),
+                parse_mode="HTML"
+            )
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''UPDATE challenge_progress 
+                          SET day3_reminder_sent = TRUE 
+                          WHERE user_id = %s''', (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logging.info(f"Day 3 reminder sent to user {user_id}")
+            
+        except TelegramForbiddenError:
+            mark_user_blocked(user_id, True)
+        except Exception as e:
+            logging.error(f"Error sending Day 3 reminder to {user_id}: {e}")
+        
+        await asyncio.sleep(0.5)
+
 @dp.callback_query(F.data.startswith("change_cat_"))
 async def change_category_from_failed(callback: types.CallbackQuery):
     """Смена категории после 'Не получилось' с отправкой заданий"""
