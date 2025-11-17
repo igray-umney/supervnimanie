@@ -2324,11 +2324,18 @@ async def main():
     # Создаем планировщик
     scheduler = AsyncIOScheduler()
     
-    # Добавляем задачу на 9:00 МСК (6:00 UTC)
+        # День 2
     scheduler.add_job(
         send_day2_reminders,
         CronTrigger(minute=0),
         id='day2_reminders'
+    )
+
+        # День 3
+    scheduler.add_job(
+        send_day3_reminders,
+        CronTrigger(minute=0),
+        id='day3_reminders'
     )
     
     scheduler.start()
