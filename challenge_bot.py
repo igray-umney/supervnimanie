@@ -972,6 +972,28 @@ async def day1_failed(callback: types.CallbackQuery):
     
     await callback.answer()
 
+@dp.callback_query(F.data == "day2_failed")
+async def day2_failed(callback: types.CallbackQuery):
+    """День 2 не получился"""
+    user_id = callback.from_user.id
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Попробую еще раз", callback_data="start_day2")],
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back")]
+    ])
+    
+    await callback.message.edit_text(
+        "Не расстраивайтесь! Бывает. 😊\n\n"
+        "Что помешало?\n"
+        "• Нет времени?\n"
+        "• Ребенок не захотел?\n"
+        "• Задание показалось сложным?\n\n"
+        "Выберите действие:",
+        reply_markup=keyboard
+    )
+    
+    await callback.answer()
+
 @dp.callback_query(F.data == "start_day2")
 async def start_day2(callback: types.CallbackQuery):
     """Начало Дня 2"""
