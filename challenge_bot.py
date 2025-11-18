@@ -1221,16 +1221,16 @@ async def day3_time_selected(callback: types.CallbackQuery):
     # Формируем текст с прогрессом
     day1_time = progress.get('day1_time', 'н/д')
     day3_time = progress.get('day3_time', time_value)
-    
+
     # Анализ прогресса
     progress_text = ""
     if day1_time and day3_time:
-        # Простое сравнение (можно улучшить)
-        if '<5' in day1_time and ('>15' in day3_time or '10-15' in day3_time):
+        # Простое сравнение
+        if 'less5' in day1_time and ('more15' in day3_time or '10-15' in day3_time):
             progress_text = "\n📈 <b>Прогресс: ОТЛИЧНЫЙ!</b> Концентрация выросла!"
         elif day1_time == day3_time:
             progress_text = "\n📊 <b>Прогресс: Стабильный</b> - продолжайте в том же духе!"
-        elif '<5' in day3_time or day1_time > day3_time:
+        elif 'less5' in day3_time:
             progress_text = "\n💪 <b>Есть куда расти!</b> Продолжайте занятия!"
         else:
             progress_text = "\n✨ <b>Заметен прогресс!</b> Отличная работа!"
