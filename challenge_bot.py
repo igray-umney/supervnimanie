@@ -2273,22 +2273,21 @@ async def main():
     # Создаем планировщик
     scheduler = AsyncIOScheduler()
     
-        # День 2
+ # СТАЛО: каждый день в 9:00 МСК (6:00 UTC)
     scheduler.add_job(
         send_day2_reminders,
-        CronTrigger(minute=0),
+        CronTrigger(hour=6, minute=0),  # 9:00 МСК = 6:00 UTC
         id='day2_reminders'
     )
-
-        # День 3
+    
     scheduler.add_job(
         send_day3_reminders,
-        CronTrigger(minute=0),
+        CronTrigger(hour=6, minute=0),  # 9:00 МСК = 6:00 UTC
         id='day3_reminders'
     )
     
     scheduler.start()
-    logging.info("Scheduler started!")
+    logging.info("Scheduler started! Reminders will be sent daily at 9:00 AM MSK")
     logging.info("Bot started successfully!")
     
     # Polling
