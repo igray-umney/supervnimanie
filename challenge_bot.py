@@ -1498,6 +1498,21 @@ async def my_progress(callback: types.CallbackQuery):
     if not progress:
         await callback.answer("Начните челлендж с /start", show_alert=True)
         return
+
+    def format_time(time_value):
+        """Форматировать время для отображения"""
+        if not time_value:
+            return ""
+        replacements = {
+            'less5': '<5 мин',
+            'more15': '>15 мин',
+            '5-10': '5-10 мин',
+            '10-15': '10-15 мин'
+        }
+        for old, new in replacements.items():
+            if old in time_value:
+                return new
+        return time_value
     
     # Формируем текст
     text = "📊 <b>Ваш прогресс в челлендже:</b>\n\n"
