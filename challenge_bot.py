@@ -402,10 +402,10 @@ def get_day_completed_keyboard_new(day):
 def get_time_keyboard(day):
     """Клавиатура выбора времени"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Менее 5 мин", callback_data=f"time{day}_<5")],
+        [InlineKeyboardButton(text="Менее 5 мин", callback_data=f"time{day}_less5")],
         [InlineKeyboardButton(text="5-10 мин", callback_data=f"time{day}_5-10")],
         [InlineKeyboardButton(text="10-15 мин", callback_data=f"time{day}_10-15")],
-        [InlineKeyboardButton(text="Более 15 мин", callback_data=f"time{day}_>15")]
+        [InlineKeyboardButton(text="Более 15 мин", callback_data=f"time{day}_more15")]
     ])
     return keyboard
 
