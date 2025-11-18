@@ -1519,21 +1519,21 @@ async def my_progress(callback: types.CallbackQuery):
     text += f"Категория: {progress['age_category']} лет\n"
     text += f"Возраст ребенка: {progress['age']} лет\n\n"
     
-    text += f"День 1: {'✅' if progress.get('day1_completed') else '⏳'}"
+        text += f"День 1: {'✅' if progress.get('day1_completed') else '⏳'}"
     if progress.get('day1_time'):
-        text += f" ({progress['day1_time']} мин)\n"
+        text += f" ({format_time(progress['day1_time'])})\n"
     else:
         text += "\n"
     
     text += f"День 2: {'✅' if progress.get('day2_completed') else '⏳'}"
     if progress.get('day2_time'):
-        text += f" ({progress['day2_time']} мин)\n"
+        text += f" ({format_time(progress['day2_time'])})\n"
     else:
         text += "\n"
     
     text += f"День 3: {'✅' if progress.get('day3_completed') else '⏳'}"
     if progress.get('day3_time'):
-        text += f" ({progress['day3_time']} мин)\n"
+        text += f" ({format_time(progress['day3_time'])})\n"
     else:
         text += "\n"
     
