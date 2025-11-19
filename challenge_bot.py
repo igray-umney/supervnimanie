@@ -782,8 +782,8 @@ def format_time(time_value):
     if not time_value:
         return "н/д"
     replacements = {
-        'less5': '<5 мин',
-        'more15': '>15 мин',
+        'less5': '&lt;5 мин',
+        'more15': '&gt;15 мин',
         '5-10': '5-10 мин',
         '10-15': '10-15 мин'
     }
