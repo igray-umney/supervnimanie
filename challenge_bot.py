@@ -1565,7 +1565,7 @@ async def my_progress(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
     ])
 
-    await callback.message.edit_text(
+    await callback.message.edit_text(  # ← ИСПРАВИЛИ ОПЕЧАТКУ!
         text,
         reply_markup=keyboard,
         parse_mode="HTML"
