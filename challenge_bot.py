@@ -777,6 +777,21 @@ def escape_html(text):
         return text
     return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
+def format_time(time_value):
+    """Форматировать время для отображения"""
+    if not time_value:
+        return "н/д"
+    replacements = {
+        'less5': '<5 мин',
+        'more15': '>15 мин',
+        '5-10': '5-10 мин',
+        '10-15': '10-15 мин'
+    }
+    for old, new in replacements.items():
+        if old in time_value:
+            return new
+    return time_value
+
 async def send_day2_reminders():
     """Отправка напоминаний о Дне 2"""
     conn = get_db_connection()
