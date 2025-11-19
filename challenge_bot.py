@@ -1234,18 +1234,19 @@ async def day3_time_selected(callback: types.CallbackQuery):
     progress = get_challenge_progress(user_id)
     
     # Формируем текст с прогрессом
-    day1_time = progress.get('day1_time', 'н/д')
-    day3_time = progress.get('day3_time', time_value)
+    day1_time = format_time(progress.get('day1_time', ''))
+    day3_time = format_time(time_value)
 
-    # Анализ прогресса
+    # Анализ прогресса (используй ИСХОДНЫЕ значения для сравнения!)
     progress_text = ""
-    if day1_time and day3_time:
+    day1_raw = progress.get('day1_time', '')
+    if day1_raw and time_value:
         # Простое сравнение
-        if 'less5' in day1_time and ('more15' in day3_time or '10-15' in day3_time):
+        if 'less5' in day1_raw and ('more15' in time_value or '10-15' in time_value):
             progress_text = "\n📈 <b>Прогресс: ОТЛИЧНЫЙ!</b> Концентрация выросла!"
-        elif day1_time == day3_time:
+        elif day1_raw == time_value:
             progress_text = "\n📊 <b>Прогресс: Стабильный</b> - продолжайте в том же духе!"
-        elif 'less5' in day3_time:
+        elif 'less5' in time_value:
             progress_text = "\n💪 <b>Есть куда расти!</b> Продолжайте занятия!"
         else:
             progress_text = "\n✨ <b>Заметен прогресс!</b> Отличная работа!"
@@ -1254,8 +1255,8 @@ async def day3_time_selected(callback: types.CallbackQuery):
         "🎉🏆 <b>ПОЗДРАВЛЯЮ!</b> 🏆🎉\n\n"
         "Вы завершили 3-дневный челлендж «Супервнимание»!\n\n"
         "📊 <b>Ваши результаты:</b>\n"
-        f"• День 1: {day1_time} мин\n"
-        f"• День 3: {day3_time} мин\n"
+        f"• День 1: {day1_time}\n"
+        f"• День 3: {day3_time}\n"
         f"{progress_text}\n\n"
         "💪 Вы проделали отличную работу!\n\n"
         "🎁 <b>Специальное предложение ждёт вас...</b>",
