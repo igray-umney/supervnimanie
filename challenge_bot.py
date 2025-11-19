@@ -1520,7 +1520,7 @@ async def my_progress(callback: types.CallbackQuery):
     text += f"Категория: {progress['age_category']} лет\n"
     text += f"Возраст ребенка: {progress['age']} лет\n\n"
     
-        text += f"День 1: {'✅' if progress.get('day1_completed') else '⏳'}"
+    text += f"День 1: {'✅' if progress.get('day1_completed') else '⏳'}"
     if progress.get('day1_time'):
         text += f" ({format_time(progress['day1_time'])})\n"
     else:
@@ -1560,16 +1560,16 @@ async def my_progress(callback: types.CallbackQuery):
         text += "💪 Продолжайте в том же духе!"
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="◀️ Назад", callback_data="back")],
-    [InlineKeyboardButton(text="💎 Полный курс", callback_data="show_tariffs")],
-    [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
-])
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="back")],
+        [InlineKeyboardButton(text="💎 Полный курс", callback_data="show_tariffs")],
+        [InlineKeyboardButton(text="❓ FAQ", callback_data="faq")]
+    ])
 
     await callback.message.edit_text(
-    text,
-    reply_markup=keyboard,
-    parse_mode="HTML"
-)
+        text,
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
     
     await callback.answer()
 
