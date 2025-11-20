@@ -797,14 +797,14 @@ async def send_day2_reminders():
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Находим пользователей, которые завершили День 1 вчера
+    # Находим пользователей, которые завершили День 1 и ещё не получили напоминание
     cur.execute('''
         SELECT user_id, age_category 
         FROM challenge_progress 
         WHERE day1_completed = TRUE 
         AND day2_completed = FALSE
         AND day2_reminder_sent = FALSE
-        AND day1_completed_at < NOW() - INTERVAL '1 day'
+        AND DATE(day1_completed_at) < CURRENT_DATE
         AND is_active = TRUE
     ''')
     
