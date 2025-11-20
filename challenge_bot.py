@@ -866,6 +866,7 @@ async def send_day3_reminders():
         WHERE day2_completed = TRUE 
         AND day3_completed = FALSE
         AND day3_reminder_sent = FALSE
+        AND DATE(day2_completed_at) < CURRENT_DATE
         AND is_active = TRUE
     ''')
     
