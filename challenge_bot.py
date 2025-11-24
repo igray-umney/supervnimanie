@@ -2717,6 +2717,8 @@ async def cmd_delete_material(message: types.Message):
 async def main():
     """Главная функция"""
     init_db()
+
+    create_promo_code("CHALLENGE50", 50, 48, "Скидка 50% для участников челленджа")
     
     # Создаем планировщик
     scheduler = AsyncIOScheduler()
