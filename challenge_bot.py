@@ -398,6 +398,60 @@ def save_material(age_category, day, variant, title, description, file_id, file_
     
     return result
 
+def create_promo_code(code, discount_percent, valid_hours, description):
+    """Создать промокод"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute('''INSERT INTO promo_codes (code, discount_percent, valid_hours, description)
+                   VALUES (%s, %s, %s, %s)
+                   ON CONFLICT (code) DO UPDATE 
+                   SET discount_percent = %s, valid_hours = %s, description = %s''',
+                (code, discount_percent, valid_hours, description, discount_percent, valid_hours, description))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def check_promo_code(user_id, code):
+    """Проверить промокод"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Проверяем существует ли промокод
+    cur.execute('SELECT * FROM promo_codes WHERE code = %s', (code,))
+    promo = cur.fetchone()
+    
+    if not promo:
+        cur.close()
+        conn.close()
+        return None
+    
+    # Проверяем не использовал ли уже
+    cur.execute('SELECT * FROM promo_usage WHERE user_id = %s AND promo_code = %s', (user_id, code))
+    used = cur.fetchone()
+    
+    cur.close()
+    conn.close()
+    
+    if used:
+        return {'error': 'already_used'}
+    
+    return promo
+
+def use_promo_code(user_id, code):
+    """Отметить промокод как использованный"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute('''INSERT INTO promo_usage (user_id, promo_code)
+                   VALUES (%s, %s)''',
+                (user_id, code))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+
 # ========================================
 # КЛАВИАТУРЫ ДЛЯ ЧЕЛЛЕНДЖА
 # ========================================
