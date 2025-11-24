@@ -2150,6 +2150,106 @@ async def check_payment(callback: types.CallbackQuery):
     else:
         await callback.answer(f"❌ Статус платежа: {status}", show_alert=True)
 
+@dp.callback_query(F.data.startswith("activate_promo_"))
+async def activate_promo(callback: types.CallbackQuery):
+    """Активация промокода"""
+    user_id = callback.from_user.id
+    promo_code = callback.data.replace("activate_promo_", "")
+    
+    # Проверяем промокод
+    promo = check_promo_code(user_id, promo_code)
+    
+    if not promo:
+        await callback.answer("❌ Промокод не найден!", show_alert=True)
+        return
+    
+    if isinstance(promo, dict) and promo.get('error') == 'already_used':
+        await callback.answer("❌ Вы уже использовали этот промокод!", show_alert=True)
+        return
+    
+    # Считаем цену со скидкой
+    original_price = CHALLENGE_TARIFFS['1month']['price']
+    discount = promo['discount_percent']
+    final_price = int(original_price * (100 - discount) / 100)
+    
+    await callback.message.edit_text(
+        f"🎁 <b>ПРОМОКОД АКТИВИРОВАН!</b>\n\n"
+        f"Промокод: <code>{promo_code}</code>\n"
+        f"Скидка: {discount}%\n\n"
+        f"Тариф: 1 месяц\n"
+        f"Обычная цена: <s>{original_price}₽</s>\n"
+        f"Цена со скидкой: <b>{final_price}₽</b> 🔥\n\n"
+        f"Экономия: {original_price - final_price}₽!\n\n"
+        "Нажмите «Оплатить» чтобы продолжить:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"💳 Оплатить {final_price}₽", callback_data=f"promo_pay_{promo_code}")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
+        ]),
+        parse_mode="HTML"
+    )
+    
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("promo_pay_"))
+async def process_promo_payment(callback: types.CallbackQuery):
+    """Обработка оплаты с промокодом"""
+    user_id = callback.from_user.id
+    promo_code = callback.data.replace("promo_pay_", "")
+    
+    # Проверяем промокод еще раз
+    promo = check_promo_code(user_id, promo_code)
+    
+    if not promo or (isinstance(promo, dict) and promo.get('error')):
+        await callback.answer("❌ Ошибка промокода!", show_alert=True)
+        return
+    
+    # Считаем финальную цену
+    original_price = CHALLENGE_TARIFFS['1month']['price']
+    discount = promo['discount_percent']
+    final_price = int(original_price * (100 - discount) / 100)
+    
+    await callback.answer("⏳ Создаём платёж...", show_alert=False)
+    
+    # Создаем платеж
+    payment = await create_yookassa_payment(
+        amount=final_price,
+        description=f"Курс (промокод {promo_code}): 1 месяц",
+        user_id=user_id
+    )
+    
+    if not payment:
+        await callback.message.edit_text(
+            "❌ Ошибка создания платежа. Попробуйте позже.",
+            reply_markup=get_main_menu()
+        )
+        return
+    
+    # Сохраняем платеж с меткой промокода
+    payment_id = create_payment(user_id, final_price, f"1month_promo_{promo_code}", payment['id'])
+    confirmation_url = payment['confirmation']['confirmation_url']
+    
+    # Отмечаем промокод как использованный
+    use_promo_code(user_id, promo_code)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
+        [InlineKeyboardButton(text="🔄 Проверить оплату", callback_data=f"check_{payment['id']}")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="back")]
+    ])
+    
+    await callback.message.edit_text(
+        f"🎁 <b>Платёж с промокодом!</b>\n\n"
+        f"Промокод: {promo_code}\n"
+        f"Тариф: 1 месяц\n"
+        f"Скидка: {discount}%\n\n"
+        f"💰 К оплате: <b>{final_price}₽</b>\n\n"
+        f"1️⃣ Нажмите «Оплатить»\n"
+        f"2️⃣ Завершите оплату\n"
+        f"3️⃣ Вернитесь и нажмите «Проверить оплату»",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
 @dp.callback_query(F.data == "back")
 async def go_back(callback: types.CallbackQuery):
     """Возврат в главное меню"""
