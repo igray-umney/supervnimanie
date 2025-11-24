@@ -2717,27 +2717,41 @@ async def cmd_delete_material(message: types.Message):
 async def main():
     """Главная функция"""
     init_db()
-
+    
+    # Создаем промокод CHALLENGE50 если его нет
     create_promo_code("CHALLENGE50", 50, 48, "Скидка 50% для участников челленджа")
     
     # Создаем планировщик
     scheduler = AsyncIOScheduler()
     
- # СТАЛО: каждый день в 9:00 МСК (6:00 UTC)
+    # Напоминания о днях челленджа (9:00 МСК)
     scheduler.add_job(
         send_day2_reminders,
-        CronTrigger(hour=6, minute=0),  # 9:00 МСК = 6:00 UTC
+        CronTrigger(hour=6, minute=0),
         id='day2_reminders'
     )
     
     scheduler.add_job(
         send_day3_reminders,
-        CronTrigger(hour=6, minute=0),  # 9:00 МСК = 6:00 UTC
+        CronTrigger(hour=6, minute=0),
         id='day3_reminders'
     )
     
+    # Воронка продаж - каждый час проверяем
+    scheduler.add_job(
+        send_12h_reminder,
+        CronTrigger(minute=0),  # Каждый час
+        id='reminder_12h'
+    )
+    
+    scheduler.add_job(
+        send_24h_final_offer,
+        CronTrigger(minute=30),  # Каждый час на 30-й минуте
+        id='reminder_24h'
+    )
+    
     scheduler.start()
-    logging.info("Scheduler started! Reminders will be sent daily at 9:00 AM MSK")
+    logging.info("Scheduler started! All reminders configured")
     logging.info("Bot started successfully!")
     
     # Polling
