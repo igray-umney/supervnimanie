@@ -185,6 +185,32 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(age_category, day, variant)
     )''')
+
+    cur.execute('''
+        ALTER TABLE challenge_progress 
+        ADD COLUMN IF NOT EXISTS first_offer_sent BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS reminder_12h_sent BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN DEFAULT FALSE,
+        ADD COLUMN IF NOT EXISTS promo_code_sent BOOLEAN DEFAULT FALSE
+    ''')
+    
+    # Таблица для промокодов
+    cur.execute('''CREATE TABLE IF NOT EXISTS promo_codes (
+        code VARCHAR(50) PRIMARY KEY,
+        discount_percent INT,
+        valid_hours INT,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+    )''')
+    
+    # Таблица использования промокодов
+    cur.execute('''CREATE TABLE IF NOT EXISTS promo_usage (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT,
+        promo_code VARCHAR(50),
+        used_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, promo_code)
+    )''')
     
     conn.commit()
     cur.close()
