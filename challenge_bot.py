@@ -2710,6 +2710,42 @@ async def cmd_delete_material(message: types.Message):
     else:
         await message.answer("❌ Материал не найден!")
 
+@dp.message(Command("create_promo"))
+async def cmd_create_promo(message: types.Message):
+    """Создать промокод (только для админа)"""
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    # Формат: /create_promo CODE DISCOUNT HOURS DESCRIPTION
+    parts = message.text.split(maxsplit=4)
+    
+    if len(parts) < 5:
+        await message.answer(
+            "❌ Формат: <code>/create_promo CODE DISCOUNT HOURS DESCRIPTION</code>\n\n"
+            "Пример: <code>/create_promo SALE30 30 72 Летняя распродажа</code>",
+            parse_mode="HTML"
+        )
+        return
+    
+    try:
+        code = parts[1].upper()
+        discount = int(parts[2])
+        hours = int(parts[3])
+        description = parts[4]
+        
+        create_promo_code(code, discount, hours, description)
+        
+        await message.answer(
+            f"✅ Промокод создан!\n\n"
+            f"Код: <code>{code}</code>\n"
+            f"Скидка: {discount}%\n"
+            f"Действителен: {hours} часов\n"
+            f"Описание: {description}",
+            parse_mode="HTML"
+        )
+    except ValueError:
+        await message.answer("❌ Скидка и часы должны быть числами!")
+
 # ========================================
 # ЗАПУСК БОТА
 # ========================================
