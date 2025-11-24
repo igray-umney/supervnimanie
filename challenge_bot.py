@@ -995,6 +995,177 @@ async def send_day3_reminders():
         
         await asyncio.sleep(0.5)
 
+async def send_12h_reminder():
+    """Отправка напоминаний через 12 часов после завершения челленджа"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Находим тех, кто завершил челлендж 12 часов назад и не купил
+    cur.execute('''
+        SELECT cp.user_id, cp.day1_time, cp.day3_time
+        FROM challenge_progress cp
+        LEFT JOIN users u ON cp.user_id = u.user_id
+        WHERE cp.day3_completed = TRUE
+        AND cp.first_offer_sent = TRUE
+        AND cp.reminder_12h_sent = FALSE
+        AND cp.purchased = FALSE
+        AND (u.subscription_until IS NULL OR u.subscription_until < NOW())
+        AND cp.day3_completed_at < NOW() - INTERVAL '12 hours'
+        AND cp.day3_completed_at > NOW() - INTERVAL '13 hours'
+    ''')
+    
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    logging.info(f"Found {len(users)} users for 12h reminder")
+    
+    for user in users:
+        try:
+            user_id = user['user_id']
+            
+            # Считаем прогресс
+            def time_to_minutes(time_str):
+                if not time_str:
+                    return 0
+                if 'less5' in time_str:
+                    return 4
+                elif '5-10' in time_str:
+                    return 7
+                elif '10-15' in time_str:
+                    return 12
+                elif 'more15' in time_str:
+                    return 18
+                return 0
+            
+            day1_mins = time_to_minutes(user['day1_time'])
+            day3_mins = time_to_minutes(user['day3_time'])
+            progress_diff = day3_mins - day1_mins
+            
+            text = (
+                "⏰ <b>ОСТАЛОСЬ 12 ЧАСОВ!</b>\n\n"
+                "Специальная цена 990₽ за доступ НАВСЕГДА\n"
+                "действует ещё 12 часов!\n\n"
+                "После этого цена будет 1490₽ 📈\n\n"
+                "─────────────────────\n"
+                "📊 <b>НАПОМИНАЮ ВАШ ПРОГРЕСС:</b>\n"
+                f"За 3 дня: +{progress_diff} минут концентрации\n\n"
+                "Представьте что будет через 14 дней! 🚀\n"
+                "─────────────────────\n\n"
+                "💰 <b>ТАРИФЫ:</b>\n\n"
+                "1 месяц: 290₽\n"
+                "НАВСЕГДА: 990₽ 🔥\n\n"
+                "Экономия 500₽ только сегодня!\n\n"
+                "❌ <b>Если не уверены:</b>\n"
+                "Гарантия 7 дней - не подошло = вернём деньги.\n"
+                "Без вопросов."
+            )
+            
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="1️⃣ 1 МЕСЯЦ - 290₽", callback_data="challenge_1month")],
+                    [InlineKeyboardButton(text="♾️ НАВСЕГДА - 990₽ 🔥", callback_data="challenge_forever")],
+                    [InlineKeyboardButton(text="❓ Вопросы", url="https://t.me/razvitie_dety")]
+                ]),
+                parse_mode="HTML"
+            )
+            
+            # Отмечаем что напоминание отправлено
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''UPDATE challenge_progress 
+                          SET reminder_12h_sent = TRUE 
+                          WHERE user_id = %s''', (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logging.info(f"12h reminder sent to user {user_id}")
+            
+        except TelegramForbiddenError:
+            mark_user_blocked(user_id, True)
+        except Exception as e:
+            logging.error(f"Error sending 12h reminder to {user_id}: {e}")
+        
+        await asyncio.sleep(0.5)
+
+async def send_24h_final_offer():
+    """Отправка финального предложения через 24 часа с промокодом"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Находим тех, кто завершил челлендж 24 часа назад и не купил
+    cur.execute('''
+        SELECT cp.user_id
+        FROM challenge_progress cp
+        LEFT JOIN users u ON cp.user_id = u.user_id
+        WHERE cp.day3_completed = TRUE
+        AND cp.reminder_12h_sent = TRUE
+        AND cp.reminder_24h_sent = FALSE
+        AND cp.purchased = FALSE
+        AND (u.subscription_until IS NULL OR u.subscription_until < NOW())
+        AND cp.day3_completed_at < NOW() - INTERVAL '24 hours'
+        AND cp.day3_completed_at > NOW() - INTERVAL '25 hours'
+    ''')
+    
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    logging.info(f"Found {len(users)} users for 24h final offer")
+    
+    for user in users:
+        try:
+            user_id = user['user_id']
+            
+            text = (
+                "💔 <b>Жаль что не решились...</b>\n\n"
+                "Но я понимаю - 990₽ это деньги.\n\n"
+                "Поэтому специально для ВАС:\n\n"
+                "🎁 <b>ПРОМОКОД: CHALLENGE50</b>\n"
+                "Скидка 50% на тариф «1 месяц»\n\n"
+                "<s>290₽</s> → <b>145₽</b> 💰\n\n"
+                "─────────────────────\n"
+                "Попробуйте за полцены!\n\n"
+                "Если понравится - всегда сможете\n"
+                "перейти на «Навсегда»\n\n"
+                "⏰ Промокод действует 48 часов\n\n"
+                "<i>P.S. Вы прошли 3 дня - не останавливайтесь\n"
+                "на половине пути!</i> 💪"
+            )
+            
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🎁 АКТИВИРОВАТЬ ПРОМОКОД", callback_data="activate_promo_CHALLENGE50")],
+                    [InlineKeyboardButton(text="♾️ Или купить НАВСЕГДА - 990₽", callback_data="challenge_forever")],
+                    [InlineKeyboardButton(text="❓ Вопросы", url="https://t.me/razvitie_dety")]
+                ]),
+                parse_mode="HTML"
+            )
+            
+            # Отмечаем что финальное предложение отправлено
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''UPDATE challenge_progress 
+                          SET reminder_24h_sent = TRUE, promo_code_sent = TRUE 
+                          WHERE user_id = %s''', (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logging.info(f"24h final offer sent to user {user_id}")
+            
+        except TelegramForbiddenError:
+            mark_user_blocked(user_id, True)
+        except Exception as e:
+            logging.error(f"Error sending 24h offer to {user_id}: {e}")
+        
+        await asyncio.sleep(0.5)
+
 @dp.callback_query(F.data.startswith("change_cat_"))
 async def change_category_from_failed(callback: types.CallbackQuery):
     """Смена категории после 'Не получилось' с отправкой заданий"""
