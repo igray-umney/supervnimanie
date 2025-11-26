@@ -2247,6 +2247,161 @@ async def process_promo_payment(callback: types.CallbackQuery):
         parse_mode="HTML"
     )
 
+# ========================================
+# ОПЛАТА ЧЕРЕЗ TELEGRAM STARS
+# ========================================
+
+@dp.callback_query(F.data.startswith("stars_"))
+async def process_stars_payment(callback: types.CallbackQuery):
+    """Обработка оплаты через Telegram Stars"""
+    user_id = callback.from_user.id
+    tariff_code = callback.data.replace("stars_", "")
+    
+    if tariff_code not in TARIFFS_STARS:
+        await callback.answer("❌ Неверный тариф!", show_alert=True)
+        return
+    
+    tariff = TARIFFS_STARS[tariff_code]
+    
+    # Создаем уникальный payload для отслеживания платежа
+    payment_payload = f"stars_{user_id}_{tariff_code}_{int(datetime.now().timestamp())}"
+    
+    # Сохраняем платеж в БД
+    create_payment(user_id, tariff['price'], f"stars_{tariff_code}", payment_payload)
+    
+    try:
+        # Отправляем invoice (счет) для Stars
+        await bot.send_invoice(
+            chat_id=user_id,
+            title=f"Super Attention - {tariff['name']}",
+            description=f"Full access to all materials for {tariff['days']} days",
+            payload=payment_payload,
+            provider_token="",  # Для Stars это пустая строка
+            currency="XTR",  # XTR = Telegram Stars
+            prices=[
+                types.LabeledPrice(
+                    label=tariff['name'],
+                    amount=tariff['price']  # В Stars не умножаем на 100
+                )
+            ]
+        )
+        
+        await callback.message.answer(
+            "⭐ Invoice sent!\n\n"
+            "Complete the payment in the message above ☝️",
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        logging.error(f"Error sending Stars invoice: {e}")
+        await callback.message.answer(
+            "❌ Error creating payment.\n\n"
+            "Try again or contact support.",
+            reply_markup=get_main_menu()
+        )
+    
+    await callback.answer()
+
+
+@dp.pre_checkout_query()
+async def process_pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
+    """Обработка pre-checkout запроса (перед оплатой Stars)"""
+    # Всегда подтверждаем оплату
+    await bot.answer_pre_checkout_query(
+        pre_checkout_query.id,
+        ok=True
+    )
+    logging.info(f"Pre-checkout confirmed for user {pre_checkout_query.from_user.id}")
+
+
+@dp.message(F.successful_payment)
+async def process_successful_payment(message: types.Message):
+    """Обработка успешной оплаты через Stars"""
+    user_id = message.from_user.id
+    payment_info = message.successful_payment
+    
+    # Парсим payload чтобы узнать тариф
+    payload = payment_info.invoice_payload
+    
+    try:
+        # Формат: stars_USER_ID_TARIFF_TIMESTAMP
+        parts = payload.split("_")
+        if len(parts) >= 3 and parts[0] == "stars":
+            tariff_code = parts[2]
+            
+            # Обновляем статус платежа
+            update_payment_status(payload, 'completed')
+            
+            # Выдаем подписку
+            grant_subscription(user_id, f"stars_{tariff_code}")
+            
+            # Получаем инфо о тарифе
+            if tariff_code in TARIFFS_STARS:
+                tariff = TARIFFS_STARS[tariff_code]
+                
+                # Создаём инвайт в клуб
+                try:
+                    if tariff_code == 'forever':
+                        invite_link = await bot.create_chat_invite_link(
+                            CLUB_CHANNEL_ID,
+                            member_limit=1
+                        )
+                    else:
+                        invite_link = await bot.create_chat_invite_link(
+                            CLUB_CHANNEL_ID,
+                            member_limit=1,
+                            expire_date=datetime.now() + timedelta(days=tariff['days'])
+                        )
+                    
+                    await message.answer(
+                        f"✅ <b>Payment successful!</b>\n\n"
+                        f"🎉 Congratulations! You got full access!\n"
+                        f"📅 Plan: {tariff['name']}\n\n"
+                        f"Join the club:\n{invite_link.invite_link}",
+                        reply_markup=get_main_menu(),
+                        parse_mode="HTML"
+                    )
+                    
+                    # Уведомление админу
+                    if ADMIN_ID:
+                        await bot.send_message(
+                            ADMIN_ID,
+                            f"💰 Новая оплата (Stars)!\n"
+                            f"👤 @{message.from_user.username or 'unknown'} (ID: {user_id})\n"
+                            f"📦 Тариф: {tariff['name']}\n"
+                            f"⭐ Сумма: {tariff['price']} Stars"
+                        )
+                    
+                except Exception as e:
+                    logging.error(f"Error creating invite after Stars payment: {e}")
+                    await message.answer(
+                        "✅ Payment received!\n"
+                        "❌ Error creating invite.\n"
+                        "Contact administrator.",
+                        reply_markup=get_main_menu()
+                    )
+            else:
+                await message.answer(
+                    "✅ Payment successful!\n\n"
+                    "Access granted!",
+                    reply_markup=get_main_menu()
+                )
+        else:
+            logging.error(f"Invalid Stars payment payload: {payload}")
+            await message.answer(
+                "✅ Payment received but there was an error.\n"
+                "Contact support.",
+                reply_markup=get_main_menu()
+            )
+    
+    except Exception as e:
+        logging.error(f"Error processing Stars payment: {e}")
+        await message.answer(
+            "✅ Payment received!\n"
+            "Contact support to activate access.",
+            reply_markup=get_main_menu()
+        )
+
 @dp.callback_query(F.data == "back")
 async def go_back(callback: types.CallbackQuery):
     """Возврат в главное меню"""
