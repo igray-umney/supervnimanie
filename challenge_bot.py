@@ -1665,11 +1665,18 @@ def create_payment(user_id, amount, tariff, yookassa_id):
     conn.close()
     return payment_id
 
-def update_payment_status(yookassa_id, status):
-    """Обновление статуса платежа"""
+def update_payment_status(identifier, status):
+    """Обновление статуса платежа по yookassa_id или payment_id"""
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute('UPDATE payments SET status = %s WHERE yookassa_id = %s', (status, yookassa_id))
+    
+    # Пробуем обновить по yookassa_id
+    cur.execute('UPDATE payments SET status = %s WHERE yookassa_id = %s', (status, identifier))
+    
+    if cur.rowcount == 0:
+        # Если не нашли - пробуем по payment_id
+        cur.execute('UPDATE payments SET status = %s WHERE payment_id = %s', (status, identifier))
+    
     conn.commit()
     cur.close()
     conn.close()
