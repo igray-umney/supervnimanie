@@ -1697,12 +1697,17 @@ def grant_subscription(user_id, tariff_code):
     cur = conn.cursor()
     
     # Проверяем в каком словаре искать тариф
-    if tariff_code in TARIFFS:
-        tariff = TARIFFS[tariff_code]
+    if tariff_code.startswith('stars_'):
+        # Убираем префикс stars_
+        clean_code = tariff_code.replace('stars_', '')
+        tariff = TARIFFS_STARS[clean_code]
     elif tariff_code in CHALLENGE_TARIFFS:
         tariff = CHALLENGE_TARIFFS[tariff_code]
+    elif tariff_code in TARIFFS:
+        tariff = TARIFFS[tariff_code]
     else:
-        tariff = TARIFFS_STARS[tariff_code]
+        # Пробуем в Stars
+        tariff = TARIFFS_STARS.get(tariff_code, TARIFFS['1month'])
     
     subscription_until = datetime.now() + timedelta(days=tariff['days'])
     
