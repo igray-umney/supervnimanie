@@ -51,9 +51,8 @@ CHALLENGE_TARIFFS = {
 
 # Цены в Telegram Stars
 TARIFFS_STARS = {
-    '1month': {'name': '1 month', 'days': 30, 'price': 200, 'old_price': 400},
-    '3months': {'name': '3 months', 'days': 90, 'price': 550, 'old_price': 1000},
-    'forever': {'name': 'Forever', 'days': 36500, 'price': 480, 'old_price': 2000}
+    '1month': {'name': '1 month', 'days': 30, 'price': 150, 'old_price': 300},
+    'forever': {'name': 'Forever', 'days': 36500, 'price': 500, 'old_price': 1000}
 }
 
 # Время отправки сообщений (МСК = UTC+3)
