@@ -1800,10 +1800,6 @@ def get_tariffs_menu(use_stars=False, is_challenge_participant=False):
                 callback_data="stars_1month"
             )],
             [InlineKeyboardButton(
-                text=f"3️⃣ 3 months - {TARIFFS_STARS['3months']['price']} ⭐",
-                callback_data="stars_3months"
-            )],
-            [InlineKeyboardButton(
                 text=f"♾️ FOREVER - {TARIFFS_STARS['forever']['price']} ⭐ 🔥 BEST!",
                 callback_data="stars_forever"
             )],
