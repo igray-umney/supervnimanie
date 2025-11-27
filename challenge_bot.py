@@ -3144,6 +3144,25 @@ async def main():
         CronTrigger(minute=30),  # Каждый час на 30-й минуте
         id='reminder_24h'
     )
+
+        # Вечерние напоминания (20:00 МСК = 17:00 UTC)
+    scheduler.add_job(
+        send_day1_evening_reminder,
+        CronTrigger(hour=17, minute=0),  # 20:00 МСК
+        id='day1_evening_reminder'
+    )
+
+    scheduler.add_job(
+        send_day2_evening_reminder,
+        CronTrigger(hour=17, minute=0),  # 20:00 МСК
+        id='day2_evening_reminder'
+    )
+
+    scheduler.add_job(
+        send_day3_evening_reminder,
+        CronTrigger(hour=17, minute=0),  # 20:00 МСК
+        id='day3_evening_reminder'
+    )
     
     scheduler.start()
     logging.info("Scheduler started! All reminders configured")
