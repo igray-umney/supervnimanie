@@ -1168,6 +1168,203 @@ async def send_24h_final_offer():
         
         await asyncio.sleep(0.5)
 
+async def send_day1_evening_reminder():
+    """Вечернее напоминание для Дня 1"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Находим тех, кто начал День 1 сегодня, но не завершил
+    cur.execute('''
+        SELECT user_id, age_category
+        FROM challenge_progress
+        WHERE is_active = TRUE
+        AND current_day = 1
+        AND day1_completed = FALSE
+        AND day1_evening_reminder_sent = FALSE
+        AND DATE(started_at) = CURRENT_DATE
+    ''')
+    
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    logging.info(f"Found {len(users)} users for Day 1 evening reminder")
+    
+    for user in users:
+        try:
+            user_id = user['user_id']
+            
+            text = (
+                "🌙 <b>Добрый вечер!</b>\n\n"
+                "Заметил, что вы еще не завершили задания Дня 1.\n\n"
+                "Не переживайте - еще есть время! ⏰\n\n"
+                "💪 Всего 5-10 минут с ребенком - и первый день позади!\n\n"
+                "📝 Даже если не успели - отметьте это, чтобы завтра получить новые задания.\n\n"
+                "Вы справитесь! 🎯"
+            )
+            
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Выполнил!", callback_data="day1_done")],
+                    [InlineKeyboardButton(text="❌ Не получилось", callback_data="day1_failed")],
+                    [InlineKeyboardButton(text="🔄 Напомнить завтра", callback_data="back")]
+                ]),
+                parse_mode="HTML"
+            )
+            
+            # Отмечаем что напоминание отправлено
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''UPDATE challenge_progress 
+                          SET day1_evening_reminder_sent = TRUE 
+                          WHERE user_id = %s''', (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logging.info(f"Day 1 evening reminder sent to user {user_id}")
+            
+        except TelegramForbiddenError:
+            mark_user_blocked(user_id, True)
+        except Exception as e:
+            logging.error(f"Error sending Day 1 evening reminder to {user_id}: {e}")
+        
+        await asyncio.sleep(0.5)
+
+
+async def send_day2_evening_reminder():
+    """Вечернее напоминание для Дня 2"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Находим тех, кто начал День 2 (получил напоминание утром), но не завершил
+    cur.execute('''
+        SELECT user_id, age_category
+        FROM challenge_progress
+        WHERE is_active = TRUE
+        AND current_day = 2
+        AND day2_completed = FALSE
+        AND day2_evening_reminder_sent = FALSE
+        AND day2_reminder_sent = TRUE
+        AND DATE(day1_completed_at) < CURRENT_DATE
+    ''')
+    
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    logging.info(f"Found {len(users)} users for Day 2 evening reminder")
+    
+    for user in users:
+        try:
+            user_id = user['user_id']
+            
+            text = (
+                "🌙 <b>Добрый вечер!</b>\n\n"
+                "День 2 еще не завершен! ⏰\n\n"
+                "Вы уже прошли половину пути - не останавливайтесь! 💪\n\n"
+                "📝 Даже 5 минут с ребенком дадут результат!\n\n"
+                "Завтра финальный рывок - День 3! 🏆"
+            )
+            
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Выполнил!", callback_data="day2_done")],
+                    [InlineKeyboardButton(text="❌ Не получилось", callback_data="day2_failed")],
+                    [InlineKeyboardButton(text="🔄 Напомнить завтра", callback_data="back")]
+                ]),
+                parse_mode="HTML"
+            )
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''UPDATE challenge_progress 
+                          SET day2_evening_reminder_sent = TRUE 
+                          WHERE user_id = %s''', (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logging.info(f"Day 2 evening reminder sent to user {user_id}")
+            
+        except TelegramForbiddenError:
+            mark_user_blocked(user_id, True)
+        except Exception as e:
+            logging.error(f"Error sending Day 2 evening reminder to {user_id}: {e}")
+        
+        await asyncio.sleep(0.5)
+
+
+async def send_day3_evening_reminder():
+    """Вечернее напоминание для Дня 3"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    cur.execute('''
+        SELECT user_id, age_category
+        FROM challenge_progress
+        WHERE is_active = TRUE
+        AND current_day = 3
+        AND day3_completed = FALSE
+        AND day3_evening_reminder_sent = FALSE
+        AND day3_reminder_sent = TRUE
+        AND DATE(day2_completed_at) < CURRENT_DATE
+    ''')
+    
+    users = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    logging.info(f"Found {len(users)} users for Day 3 evening reminder")
+    
+    for user in users:
+        try:
+            user_id = user['user_id']
+            
+            text = (
+                "🌙 <b>Добрый вечер!</b>\n\n"
+                "🏆 <b>ФИНАЛЬНЫЙ ДЕНЬ!</b>\n\n"
+                "Вы так близко к завершению челленджа! 💪\n\n"
+                "Не упустите возможность:\n"
+                "✅ Увидеть результаты 3 дней работы\n"
+                "✅ Получить специальную скидку 40%\n"
+                "✅ Завершить начатое!\n\n"
+                "📝 Всего несколько минут - и вы в финале! 🎯"
+            )
+            
+            await bot.send_message(
+                user_id,
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Выполнил!", callback_data="day3_done")],
+                    [InlineKeyboardButton(text="❌ Не получилось", callback_data="day3_failed")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back")]
+                ]),
+                parse_mode="HTML"
+            )
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute('''UPDATE challenge_progress 
+                          SET day3_evening_reminder_sent = TRUE 
+                          WHERE user_id = %s''', (user_id,))
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            logging.info(f"Day 3 evening reminder sent to user {user_id}")
+            
+        except TelegramForbiddenError:
+            mark_user_blocked(user_id, True)
+        except Exception as e:
+            logging.error(f"Error sending Day 3 evening reminder to {user_id}: {e}")
+        
+        await asyncio.sleep(0.5)
+
 @dp.callback_query(F.data.startswith("change_cat_"))
 async def change_category_from_failed(callback: types.CallbackQuery):
     """Смена категории после 'Не получилось' с отправкой заданий"""
