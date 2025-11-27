@@ -185,16 +185,16 @@ def init_db():
         UNIQUE(age_category, day, variant)
     )''')
 
-    cur.execute('''
-        ALTER TABLE challenge_progress 
-        ADD COLUMN IF NOT EXISTS first_offer_sent BOOLEAN DEFAULT FALSE,
-        ADD COLUMN IF NOT EXISTS reminder_12h_sent BOOLEAN DEFAULT FALSE,
-        ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN DEFAULT FALSE,
-        ADD COLUMN IF NOT EXISTS promo_code_sent BOOLEAN DEFAULT FALSE
-        ADD COLUMN IF NOT EXISTS day1_evening_reminder_sent BOOLEAN DEFAULT FALSE,
-        ADD COLUMN IF NOT EXISTS day2_evening_reminder_sent BOOLEAN DEFAULT FALSE,
-        ADD COLUMN IF NOT EXISTS day3_evening_reminder_sent BOOLEAN DEFAULT FALSE
-    ''')
+        # Добавляем колонки для воронки продаж
+    cur.execute('ALTER TABLE challenge_progress ADD COLUMN IF NOT EXISTS first_offer_sent BOOLEAN DEFAULT FALSE')
+    cur.execute('ALTER TABLE challenge_progress ADD COLUMN IF NOT EXISTS reminder_12h_sent BOOLEAN DEFAULT FALSE')
+    cur.execute('ALTER TABLE challenge_progress ADD COLUMN IF NOT EXISTS reminder_24h_sent BOOLEAN DEFAULT FALSE')
+    cur.execute('ALTER TABLE challenge_progress ADD COLUMN IF NOT EXISTS promo_code_sent BOOLEAN DEFAULT FALSE')
+
+        # Добавляем колонки для вечерних напоминаний
+    cur.execute('ALTER TABLE challenge_progress ADD COLUMN IF NOT EXISTS day1_evening_reminder_sent BOOLEAN DEFAULT FALSE')
+    cur.execute('ALTER TABLE challenge_progress ADD COLUMN IF NOT EXISTS day2_evening_reminder_sent BOOLEAN DEFAULT FALSE')
+    cur.execute('ALTER TABLE challenge_progress ADD COLUMN IF NOT EXISTS day3_evening_reminder_sent BOOLEAN DEFAULT FALSE')
     
     # Таблица для промокодов
     cur.execute('''CREATE TABLE IF NOT EXISTS promo_codes (
