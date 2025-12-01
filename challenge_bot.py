@@ -3114,60 +3114,7 @@ async def main():
     """Главная функция"""
     init_db()
     
-    # Создаем промокод CHALLENGE50 если его нет
-    create_promo_code("CHALLENGE50", 50, 48, "Скидка 50% для участников челленджа")
-    
-    # Создаем планировщик
-    scheduler = AsyncIOScheduler()
-    
-    # Напоминания о днях челленджа (9:00 МСК)
-    scheduler.add_job(
-        send_day2_reminders,
-        CronTrigger(hour=6, minute=0),
-        id='day2_reminders'
-    )
-    
-    scheduler.add_job(
-        send_day3_reminders,
-        CronTrigger(hour=6, minute=0),
-        id='day3_reminders'
-    )
-    
-    # Воронка продаж - каждый час проверяем
-    scheduler.add_job(
-        send_12h_reminder,
-        CronTrigger(minute=0),  # Каждый час
-        id='reminder_12h'
-    )
-    
-    scheduler.add_job(
-        send_24h_final_offer,
-        CronTrigger(minute=30),  # Каждый час на 30-й минуте
-        id='reminder_24h'
-    )
-
-        # Вечерние напоминания (20:00 МСК = 17:00 UTC)
-    scheduler.add_job(
-        send_day1_evening_reminder,
-        CronTrigger(hour=17, minute=0),  # 20:00 МСК
-        id='day1_evening_reminder'
-    )
-
-    scheduler.add_job(
-        send_day2_evening_reminder,
-        CronTrigger(hour=17, minute=0),  # 20:00 МСК
-        id='day2_evening_reminder'
-    )
-
-    scheduler.add_job(
-        send_day3_evening_reminder,
-        CronTrigger(hour=17, minute=0),  # 20:00 МСК
-        id='day3_evening_reminder'
-    )
-    
-    scheduler.start()
-    logging.info("Scheduler started! All reminders configured")
-    logging.info("Bot started successfully!")
+    asyncio.create_task(run_scheduled_reminders())
     
     # Polling
     while True:
