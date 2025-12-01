@@ -1927,20 +1927,25 @@ def grant_subscription(user_id, tariff_code):
 
 async def create_yookassa_payment(amount, description, user_id):
     """Создание платежа в ЮKassa"""
+    import ssl
+    
     url = "https://api.yookassa.ru/v3/payments"
     
     idempotence_key = str(uuid.uuid4())
     auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
-    logging.info(f"Creating payment with shop_id: {YOOKASSA_SHOP_ID}")
-    logging.info(f"Auth string length: {len(auth_string)}")
     auth_bytes = auth_string.encode('utf-8')
     auth_b64 = base64.b64encode(auth_bytes).decode('utf-8')
+    
+    logging.info(f"Creating YooKassa payment for user {user_id}, amount {amount}")
     
     headers = {
         "Idempotence-Key": idempotence_key,
         "Content-Type": "application/json",
         "Authorization": f"Basic {auth_b64}"
     }
+    
+    # Получаем имя бота заранее
+    bot_info = await bot.get_me()
     
     data = {
         "amount": {
@@ -1949,7 +1954,7 @@ async def create_yookassa_payment(amount, description, user_id):
         },
         "confirmation": {
             "type": "redirect",
-            "return_url": f"https://t.me/{(await bot.get_me()).username}"
+            "return_url": f"https://t.me/{bot_info.username}"
         },
         "capture": True,
         "description": description,
@@ -1958,14 +1963,37 @@ async def create_yookassa_payment(amount, description, user_id):
         }
     }
     
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=data, headers=headers) as response:
-            if response.status == 200:
-                result = await response.json()
-                return result
-            else:
-                logging.error(f"YooKassa error: {response.status}, {await response.text()}")
-                return None
+    # SSL контекст - отключаем проверку
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    
+    # Увеличиваем timeout
+    timeout = aiohttp.ClientTimeout(total=30, connect=10)
+    
+    try:
+        connector = aiohttp.TCPConnector(ssl=ssl_context, force_close=True)
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            logging.info(f"Sending request to YooKassa...")
+            async with session.post(url, json=data, headers=headers) as response:
+                status = response.status
+                logging.info(f"YooKassa response status: {status}")
+                
+                if status == 200:
+                    result = await response.json()
+                    logging.info(f"Payment created successfully: {result.get('id')}")
+                    return result
+                else:
+                    text = await response.text()
+                    logging.error(f"YooKassa error: {status}, {text}")
+                    return None
+                    
+    except aiohttp.ClientError as e:
+        logging.error(f"YooKassa ClientError: {type(e).__name__} - {str(e)}")
+        return None
+    except Exception as e:
+        logging.error(f"YooKassa unexpected error: {type(e).__name__} - {str(e)}")
+        return None
 
 async def check_yookassa_payment(payment_id):
     """Проверка статуса платежа в ЮKassa"""
