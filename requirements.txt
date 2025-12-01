@@ -1,5 +1,5 @@
 aiogram==3.4.1
-aiohttp==3.9.1
+aiohttp==3.9.5
 psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 APScheduler==3.10.4
