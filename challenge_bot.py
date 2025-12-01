@@ -3151,7 +3151,13 @@ async def run_scheduled_reminders():
 async def main():
     """Главная функция"""
     init_db()
+
+    # Создаем промокод CHALLENGE50 если его нет
+    create_promo_code("CHALLENGE50", 50, 48, "Скидка 50% для участников челленджа")
     
+    logging.info("Bot started successfully!")
+    
+    # Запускаем планировщик
     asyncio.create_task(run_scheduled_reminders())
     
     # Polling
