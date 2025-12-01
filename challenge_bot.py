@@ -1931,6 +1931,8 @@ async def create_yookassa_payment(amount, description, user_id):
     
     idempotence_key = str(uuid.uuid4())
     auth_string = f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}"
+    logging.info(f"Creating payment with shop_id: {YOOKASSA_SHOP_ID}")
+    logging.info(f"Auth string length: {len(auth_string)}")
     auth_bytes = auth_string.encode('utf-8')
     auth_b64 = base64.b64encode(auth_bytes).decode('utf-8')
     
