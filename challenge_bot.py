@@ -3107,6 +3107,44 @@ async def cmd_create_promo(message: types.Message):
         await message.answer("❌ Скидка и часы должны быть числами!")
 
 # ========================================
+# ПЛАНИРОВЩИК ЗАДАЧ
+# ========================================
+
+async def run_scheduled_reminders():
+    """Фоновая задача для всех напоминаний"""
+    from datetime import datetime
+    
+    while True:
+        try:
+            now = datetime.now()
+            hour = now.hour
+            minute = now.minute
+            
+            # Утренние напоминания (6:00 UTC = 9:00 МСК)
+            if hour == 6 and minute == 0:
+                asyncio.create_task(send_day2_reminders())
+                asyncio.create_task(send_day3_reminders())
+            
+            # Вечерние напоминания (17:00 UTC = 20:00 МСК)
+            if hour == 17 and minute == 0:
+                asyncio.create_task(send_day1_evening_reminder())
+                asyncio.create_task(send_day2_evening_reminder())
+                asyncio.create_task(send_day3_evening_reminder())
+            
+            # Воронка продаж (каждый час на :00 и :30)
+            if minute == 0:
+                asyncio.create_task(send_12h_reminder())
+            if minute == 30:
+                asyncio.create_task(send_24h_final_offer())
+            
+            # Проверяем каждую минуту
+            await asyncio.sleep(60)
+            
+        except Exception as e:
+            logging.error(f"Error in run_scheduled_reminders: {e}")
+            await asyncio.sleep(60)
+
+# ========================================
 # ЗАПУСК БОТА
 # ========================================
 
