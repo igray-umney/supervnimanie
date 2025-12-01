@@ -1925,10 +1925,9 @@ def grant_subscription(user_id, tariff_code):
     cur.close()
     conn.close()
 
-async def create_yookassa_payment(amount, description, user_id, retry_count=0):
-    """Создание платежа в ЮKassa с retry"""
-    import ssl
-    
+# ЮKassa API
+async def create_yookassa_payment(amount, description, user_id):
+    """Создание платежа в ЮKassa"""
     url = "https://api.yookassa.ru/v3/payments"
     
     idempotence_key = str(uuid.uuid4())
@@ -1936,16 +1935,11 @@ async def create_yookassa_payment(amount, description, user_id, retry_count=0):
     auth_bytes = auth_string.encode('utf-8')
     auth_b64 = base64.b64encode(auth_bytes).decode('utf-8')
     
-    logging.info(f"Creating YooKassa payment for user {user_id}, amount {amount} (attempt {retry_count + 1})")
-    
     headers = {
         "Idempotence-Key": idempotence_key,
         "Content-Type": "application/json",
         "Authorization": f"Basic {auth_b64}"
     }
-    
-    # Получаем имя бота заранее
-    bot_info = await bot.get_me()
     
     data = {
         "amount": {
@@ -1954,7 +1948,7 @@ async def create_yookassa_payment(amount, description, user_id, retry_count=0):
         },
         "confirmation": {
             "type": "redirect",
-            "return_url": f"https://t.me/{bot_info.username}"
+            "return_url": f"https://t.me/{(await bot.get_me()).username}"
         },
         "capture": True,
         "description": description,
@@ -1963,54 +1957,14 @@ async def create_yookassa_payment(amount, description, user_id, retry_count=0):
         }
     }
     
-    # SSL контекст
-    ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-    
-    # Увеличиваем timeout до 60 секунд
-    timeout = aiohttp.ClientTimeout(total=60, connect=15)
-    
-    try:
-        connector = aiohttp.TCPConnector(ssl=ssl_context, force_close=True)
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-            logging.info(f"Sending request to YooKassa (timeout=60s)...")
-            async with session.post(url, json=data, headers=headers) as response:
-                status = response.status
-                logging.info(f"YooKassa response status: {status}")
-                
-                if status == 200:
-                    result = await response.json()
-                    logging.info(f"Payment created successfully: {result.get('id')}")
-                    return result
-                else:
-                    text = await response.text()
-                    logging.error(f"YooKassa error: {status}, {text}")
-                    return None
-                    
-    except asyncio.TimeoutError:
-        logging.error(f"YooKassa timeout after 60 seconds (attempt {retry_count + 1})")
-        # Retry до 2 раз
-        if retry_count < 2:
-            logging.info(f"Retrying... (attempt {retry_count + 2})")
-            await asyncio.sleep(2)  # Подождать 2 секунды перед retry
-            return await create_yookassa_payment(amount, description, user_id, retry_count + 1)
-        else:
-            logging.error(f"All retry attempts failed for YooKassa payment")
-            return None
-            
-    except aiohttp.ClientError as e:
-        logging.error(f"YooKassa ClientError: {type(e).__name__} - {str(e)}")
-        # Retry для ClientError тоже
-        if retry_count < 2:
-            logging.info(f"Retrying after ClientError... (attempt {retry_count + 2})")
-            await asyncio.sleep(2)
-            return await create_yookassa_payment(amount, description, user_id, retry_count + 1)
-        return None
-        
-    except Exception as e:
-        logging.error(f"YooKassa unexpected error: {type(e).__name__} - {str(e)}")
-        return None
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=data, headers=headers) as response:
+            if response.status == 200:
+                result = await response.json()
+                return result
+            else:
+                logging.error(f"YooKassa error: {response.status}, {await response.text()}")
+                return None
 
 async def check_yookassa_payment(payment_id):
     """Проверка статуса платежа в ЮKassa"""
